@@ -2,7 +2,7 @@
 // @name         Google Search fix Pink links
 // @namespace    http://tampermonkey.net/
 // @version      1.1
-// @description  Visited links are pink, not visited are blue. And nothing else.
+// @description  Visited links are pink, not visited are blue. And nothing else. SRC: https://github.com/lynrayy/TampermonkeyScripts
 // @author       Lynrayy, ChatGPT
 // @include      *://www.google.*/*
 // @grant        GM_addStyle
