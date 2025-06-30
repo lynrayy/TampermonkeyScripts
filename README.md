@@ -11,4 +11,4 @@ Visited links are purple, not visited are blue. And nothing else. In case all yo
 ### - 🧠 Medesk 30 auto inteval | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/main/medesk_auto_interval_30.user.js) 
 Always set interval to 30 in app.medesk.net
 ### - 🎬 Duplicate medesk schedule entry to the next week | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/main/medesk_dupe_entry_to_next_week.user.js) 
-Automatizes clisks for duplicating schedule entry to the next week
+Automatizes clicks for duplicating schedule entry to the next week
