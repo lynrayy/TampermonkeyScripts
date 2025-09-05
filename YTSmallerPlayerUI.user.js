@@ -7,6 +7,8 @@
 // @match        https://www.youtube.com/*
 // @icon         https://www.youtube.com/s/desktop/fe2f1a22/img/favicon_144x144.png
 // @grant        none
+// @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/main/YTSmallerPlayerUI.user.js
+// @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/main/YTSmallerPlayerUI.user.js
 // ==/UserScript==
 
 (function() {
