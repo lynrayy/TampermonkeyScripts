@@ -13,6 +13,3 @@ Always set interval to 30 in app.medesk.net
 ### - 🎬 Duplicate medesk schedule entry to the next week | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/main/medesk_dupe_entry_to_next_week.user.js) 
 Automatizes clicks for duplicating schedule entry to the next week
 
-## YouTube
-### - 🤏🏻 YouTube Smaller Player Controls | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/main/YTSmallerPlayerUI.user.js) 
-In case if your youtube player controls are too big. New issue from 09.2025. Makes UI in youtube player smaller, back to normal
