@@ -8,7 +8,7 @@ For use, install **[Tampermonkey](https://chromewebstore.google.com/detail/tampe
 Visited links are purple, not visited are blue. And nothing else. In case all your results turned purple (Google is A/B testing you)
 
 ## Youtube
-### - 🗑 Add remove from WL button | [GITHUB]([https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/main/GoogleSearchFixPinklinks.user.js](https://github.com/lynrayy/YT-RM-BTN)) 
+### - 🗑 Add remove from WL button | [GITHUB] (https://github.com/lynrayy/YT-RM-BTN)
 Adds trash button to videos in watch later playlist. Now you can easily cleanup this nasty playlist
 
 ## Medesk.net
