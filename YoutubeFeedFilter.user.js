@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube Feed Filter
 // @namespace    https://github.com/local/youtube-length-filter
-// @version      1.1.2
-// @description  Hides YouTube videos outside a configurable duration range and/or outside a recency (publish age) range.
+// @version      2.0.23
+// @description  Hides YouTube videos outside a configurable duration range and/or outside a recency (publish age) range. Hides jam playlists and shelf sections.
 // @author       Lynrayy
 // @match        https://*.youtube.com/*
 // @match        https://www.youtube.com/*
@@ -16,9 +16,10 @@
 // ==/UserScript==
 
 (function () {
-  'use strict';
+    'use strict';
 
-  const STORAGE_KEY = 'yt-length-filter-settings-v1';
+    const SCRIPT_VERSION = '2.0.23';
+    const STORAGE_KEY = 'yt-length-filter-settings-v1';
   const SLIDER_MAX_SECONDS = 2 * 60 * 60;
   const STORED_MAX_SECONDS = 12 * 60 * 60;
   const STEP_SECONDS = 5;
@@ -35,27 +36,29 @@
 
   const RECENCY_UNIT_LABELS = [
     ['seconds', 'секунд'],
-    ['hours', 'часов'],
     ['minutes', 'минут'],
+    ['hours', 'часов'],
     ['days', 'дней'],
     ['months', 'месяцев'],
     ['years', 'лет'],
   ];
 
   const RECENCY_WORD_TO_UNIT = {
-    секунд: 'seconds', секунды: 'seconds', сек: 'seconds', second: 'seconds', seconds: 'seconds',
-    минут: 'minutes', минуты: 'minutes', мин: 'minutes', minute: 'minutes', minutes: 'minutes',
-    часов: 'hours', часа: 'hours', час: 'hours', hour: 'hours', hours: 'hours',
-    дней: 'days', дня: 'days', дн: 'days', день: 'days', day: 'days', days: 'days',
-    недель: 'weeks', недели: 'weeks', недел: 'weeks', week: 'weeks', weeks: 'weeks',
-    месяцев: 'months', месяца: 'months', месяц: 'months', month: 'months', months: 'months',
-    лет: 'years', года: 'years', год: 'years', year: 'years', years: 'years',
+    секунд: 'seconds', секунды: 'seconds', сек: 'seconds', с: 'seconds', second: 'seconds', seconds: 'seconds',
+    минут: 'minutes', минуты: 'minutes', мин: 'minutes', м: 'minutes', minute: 'minutes', minutes: 'minutes',
+    часов: 'hours', часа: 'hours', час: 'hours', ч: 'hours', 'ч.': 'hours', hour: 'hours', hours: 'hours',
+    дней: 'days', дня: 'days', дн: 'days', д: 'days', 'д.': 'days', день: 'days', day: 'days', days: 'days',
+    недель: 'weeks', недели: 'weeks', недел: 'weeks', нед: 'weeks', 'нед.': 'weeks', week: 'weeks', weeks: 'weeks',
+    месяцев: 'months', месяца: 'months', месяц: 'months', мес: 'months', 'мес.': 'months', month: 'months', months: 'months',
+    лет: 'years', года: 'years', год: 'years', г: 'years', 'г.': 'years', 'л.': 'years', л: 'years', year: 'years', years: 'years',
   };
 
   const DEFAULT_SETTINGS = {
     durationEnabled: true,
     recencyEnabled: false,
     jamEnabled: false,
+    shelfEnabled: false,
+    applyEverywhere: false,
     tab: 'duration',
     minSeconds: 0,
     maxSeconds: 20 * 60,
@@ -77,7 +80,7 @@
     '.ytp-videowall-still-info-duration',
   ].join(',');
 
-  const CONTAINER_SELECTORS = [
+  const CONTAINER_SELECTOR = [
     'ytd-rich-item-renderer',
     'ytd-video-renderer',
     'ytd-compact-video-renderer',
@@ -91,14 +94,54 @@
     'ytd-compact-movie-renderer',
     'ytd-movie-renderer',
     '.ytp-videowall-still',
-  ];
+    'ytd-grid-video-renderer',
+    'ytd-compact-video-renderer',
+    'ytd-channel-video-renderer',
+    // Subscriptions page: heading + group pairs (not necessarily direct children)
+    'main h3',
+    'main h2',
+    'main group',
+    // YouTube subscription feed actual structure
+    'main ytd-rich-grid-row',
+    'main ytd-rich-grid-media',
+    'main ytd-rich-item-renderer',
+    'main [role="heading"][aria-level="3"]',
+    'main [role="heading"][aria-level="2"]',
+    'main yt-formatted-string[role="heading"]',
+    // Fallback: all direct children of main that might be video entries
+    'main > *',
+  ].join(',');
 
   let settings = loadSettings();
   let scanTimer = 0;
+  let scanDebounceTimer = 0;
+  const SCAN_DEBOUNCE_MS = 500;
   let observer = null;
   let ui = null;
+  let isDestroyed = false;
 
   boot();
+
+  function destroy() {
+    isDestroyed = true;
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+    window.clearTimeout(scanTimer);
+    window.clearTimeout(scanDebounceTimer);
+    window.removeEventListener('yt-navigate-finish', scheduleScan, true);
+    window.removeEventListener('yt-page-data-updated', scheduleScan, true);
+    window.removeEventListener('load', scheduleScan, true);
+    if (ui && ui.host) {
+      ui.host.remove();
+      ui = null;
+    }
+  }
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', destroy, { once: true });
+  window.addEventListener('unload', destroy, { once: true });
 
   function boot() {
     try {
@@ -124,11 +167,14 @@
 
   function loadSettings() {
     const saved = safeGetValue(STORAGE_KEY, null);
+    console.log('[YT Filter] loadSettings saved:', saved);
     if (!saved || typeof saved !== 'object') {
       return { ...DEFAULT_SETTINGS };
     }
 
-    return normalizeSettings({ ...DEFAULT_SETTINGS, ...saved });
+    const normalized = normalizeSettings({ ...DEFAULT_SETTINGS, ...saved });
+    console.log('[YT Filter] loadSettings normalized:', normalized);
+    return normalized;
   }
 
   function normalizeSettings(value) {
@@ -141,6 +187,8 @@
       durationEnabled: value.durationEnabled !== undefined ? Boolean(value.durationEnabled) : true,
       recencyEnabled: Boolean(value.recencyEnabled),
       jamEnabled: Boolean(value.jamEnabled),
+      shelfEnabled: Boolean(value.shelfEnabled),
+      applyEverywhere: Boolean(value.applyEverywhere),
       tab: ['duration', 'recency', 'irritants'].includes(value.tab) ? value.tab : 'duration',
       minSeconds: normalizedMin,
       maxSeconds: normalizedMax,
@@ -160,13 +208,16 @@
 
   function saveSettings() {
     settings = normalizeSettings(settings);
+    console.log('[YT Filter] saveSettings recencyEnabled:', settings.recencyEnabled, 'full:', JSON.stringify(settings));
     safeSetValue(STORAGE_KEY, settings);
   }
 
   function safeGetValue(key, fallback) {
     try {
       if (typeof GM_getValue === 'function') {
-        return GM_getValue(key, fallback);
+        const result = GM_getValue(key, fallback);
+        console.log('[YT Filter] safeGetValue GM_getValue:', key, result);
+        return result;
       }
     } catch (error) {
       console.warn('[YouTube Length Filter] Could not read Tampermonkey storage.', error);
@@ -174,7 +225,9 @@
 
     try {
       const raw = window.localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
+      const result = raw ? JSON.parse(raw) : fallback;
+      console.log('[YT Filter] safeGetValue localStorage:', key, result);
+      return result;
     } catch (error) {
       console.warn('[YouTube Length Filter] Could not read localStorage.', error);
       return fallback;
@@ -241,6 +294,8 @@
 
     const topRow = makeElement('div', 'ytlf-top-row');
     const title = makeElement('div', 'ytlf-title', 'Фильтр YouTube');
+    const version = makeElement('span', 'ytlf-version', `v${SCRIPT_VERSION}`);
+    title.appendChild(version);
     const close = makeButton('ytlf-close', '×', 'Закрыть');
     close.setAttribute('aria-label', 'Закрыть');
     topRow.append(title, close);
@@ -250,6 +305,13 @@
     const tabRecency = makeButton('ytlf-tab ytlf-tab-recency', 'Новизна');
     const tabIrritants = makeButton('ytlf-tab ytlf-tab-irritants', 'Раздражители');
     tabBar.append(tabDuration, tabRecency, tabIrritants);
+
+    const applyEverywhereRow = makeElement('div', 'ytlf-apply-everywhere-row');
+    const applyEverywhereSwitch = makeElement('label', 'ytlf-switch');
+    const applyEverywhereEnabled = makeElement('input', 'ytlf-apply-everywhere-enabled');
+    applyEverywhereEnabled.type = 'checkbox';
+    applyEverywhereSwitch.append(applyEverywhereEnabled, makeElement('span', '', 'Применять везде'));
+    applyEverywhereRow.append(applyEverywhereSwitch);
 
     const durationTab = makeElement('div', 'ytlf-tab-panel ytlf-duration-tab');
     const recencyTab = makeElement('div', 'ytlf-tab-panel ytlf-recency-tab');
@@ -304,21 +366,32 @@
     recencyEnabled.type = 'checkbox';
     recencySwitch.append(recencyEnabled, makeElement('span', '', 'Фильтр новизны'));
 
-    const recencyHint = makeElement('div', 'ytlf-recency-hint',
-      'Скрывать видео младше «От» и старше «До». Пустое поле — без ограничения.');
-
     const recencyMinField = makeRecencyField('От', 'ytlf-recency-min-input', 'ytlf-recency-min-unit');
     const recencyMaxField = makeRecencyField('До', 'ytlf-recency-max-input', 'ytlf-recency-max-unit');
 
-    recencyTab.append(recencySwitch, recencyHint, recencyMinField.label, recencyMaxField.label);
+    recencyTab.append(recencySwitch, recencyMinField.label, recencyMaxField.label);
 
     const irritantsSwitch = makeElement('label', 'ytlf-switch');
     const jamEnabled = makeElement('input', 'ytlf-jam-enabled');
     jamEnabled.type = 'checkbox';
-    irritantsSwitch.append(jamEnabled, makeElement('span', '', 'Скрывать Джемы'));
+    irritantsSwitch.append(jamEnabled, makeElement('span', '', 'Скрывать джемы'));
 
-    const irritantsHint = makeElement('div', 'ytlf-recency-hint',
-      'Скрывает видео и плейлисты, в названии или разделе которых встречается «Джем». Можно дополнить своими словами-раздражителями.');
+    const shelfSwitch = makeElement('label', 'ytlf-switch');
+    const shelfEnabled = makeElement('input', 'ytlf-shelf-enabled');
+    shelfEnabled.type = 'checkbox';
+    shelfSwitch.append(shelfEnabled, makeElement('span', '', 'Скрывать полки'));
+
+    const jamHint = makeElement('div', 'ytlf-tooltip',
+      'Скрывает плейлисты джемов (миксы). На превью вместо длительности написано «Джем», название начинается с «Джем –». Не работает, если выбрана категория «Джемы» сверху.');
+
+    const shelfHint = makeElement('div', 'ytlf-tooltip',
+      'Скрывает полки-разделы: «Ещё темы», «Shorts», предложения YouTube Premium и прочие рекомендательные блоки.');
+
+    const jamRow = makeElement('div', 'ytlf-irritant-row');
+    jamRow.append(irritantsSwitch, jamHint);
+
+    const shelfRow = makeElement('div', 'ytlf-irritant-row');
+    shelfRow.append(shelfSwitch, shelfHint);
 
     const irritantsKeywords = makeElement('input', 'ytlf-irritants-keywords');
     irritantsKeywords.type = 'text';
@@ -326,11 +399,14 @@
     irritantsKeywords.autocomplete = 'off';
     irritantsKeywords.spellcheck = false;
 
-    irritantsTab.append(irritantsSwitch, irritantsHint, irritantsKeywords);
+    irritantsTab.append(jamRow, shelfRow, irritantsKeywords);
+
+    attachTooltip(jamRow, jamHint);
+    attachTooltip(shelfRow, shelfHint);
 
     const status = makeElement('div', 'ytlf-status');
 
-    panel.append(topRow, tabBar, durationTab, recencyTab, irritantsTab, status);
+    panel.append(topRow, applyEverywhereRow, tabBar, durationTab, recencyTab, irritantsTab, status);
     host.append(button, panel);
     applyBaseUiStyles(host, button, panel);
     document.body.appendChild(host);
@@ -355,6 +431,8 @@
       durationEnabled,
       recencyEnabled,
       jamEnabled,
+      shelfEnabled,
+      applyEverywhereEnabled,
       minRange,
       maxRange,
       minInput: minField.input,
@@ -375,6 +453,14 @@
     ui.close.addEventListener('click', () => setPanelOpen(false));
     ui.tabDuration.addEventListener('click', () => setTab('duration'));
     ui.tabRecency.addEventListener('click', () => setTab('recency'));
+    ui.tabIrritants.addEventListener('click', () => setTab('irritants'));
+
+    ui.applyEverywhereEnabled.addEventListener('change', () => {
+      settings.applyEverywhere = ui.applyEverywhereEnabled.checked;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
 
     ui.durationEnabled.addEventListener('change', () => {
       settings.durationEnabled = ui.durationEnabled.checked;
@@ -384,6 +470,7 @@
     });
 
     ui.recencyEnabled.addEventListener('change', () => {
+      console.log('[YT Filter] recencyEnabled checkbox changed:', ui.recencyEnabled.checked);
       settings.recencyEnabled = ui.recencyEnabled.checked;
       saveSettings();
       renderUi();
@@ -428,6 +515,13 @@
 
     ui.jamEnabled.addEventListener('change', () => {
       settings.jamEnabled = ui.jamEnabled.checked;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
+
+    ui.shelfEnabled.addEventListener('change', () => {
+      settings.shelfEnabled = ui.shelfEnabled.checked;
       saveSettings();
       renderUi();
       scheduleScan();
@@ -583,6 +677,16 @@
         font-size: 15px !important;
         font-weight: 800 !important;
         line-height: 1.2 !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+      }
+
+      #ytlf-root .ytlf-version {
+        color: var(--ytlf-muted) !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        opacity: 0.7 !important;
       }
 
       #ytlf-root .ytlf-close {
@@ -601,6 +705,11 @@
       #ytlf-root .ytlf-close:hover {
         border-color: var(--ytlf-border) !important;
         color: var(--ytlf-text) !important;
+      }
+
+      #ytlf-root .ytlf-apply-everywhere-row {
+        margin-top: 8px !important;
+        margin-bottom: 8px !important;
       }
 
       #ytlf-root .ytlf-tabs {
@@ -904,9 +1013,37 @@
       }
 
       #ytlf-root .ytlf-irritants-keywords:focus {
-        border-color: var(--ytlf-accent) !important;
-        box-shadow: 0 0 0 3px var(--ytlf-accent-soft) !important;
+        border-color: var(--ytlf-accent);
+        box-shadow: 0 0 0 3px var(--ytlf-accent-soft);
       }
+
+      #ytlf-root .ytlf-irritant-row {
+        position: relative !important;
+      }
+
+      #ytlf-root .ytlf-tooltip {
+        position: absolute !important;
+        left: 0 !important;
+        top: calc(100% + 6px) !important;
+        width: min(300px, 100%) !important;
+        margin: 0 !important;
+        padding: 8px 10px !important;
+        border: 1px solid var(--ytlf-border) !important;
+        border-radius: 6px !important;
+        background: var(--ytlf-bg) !important;
+        color: var(--ytlf-muted) !important;
+        font-size: 11.5px !important;
+        font-weight: 500 !important;
+        line-height: 1.4 !important;
+        box-shadow: var(--ytlf-shadow) !important;
+        z-index: 30 !important;
+        display: none !important;
+      }
+
+      #ytlf-root .ytlf-tooltip.ytlf-tooltip-visible {
+        display: block !important;
+      }
+
 
       #ytlf-root .ytlf-status {
         margin-top: 12px !important;
@@ -1015,8 +1152,15 @@
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл скрывание Джемов', () => {
+    GM_registerMenuCommand('Вкл/выкл скрывание джемов', () => {
       settings.jamEnabled = !settings.jamEnabled;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
+
+    GM_registerMenuCommand('Вкл/выкл скрывание полок', () => {
+      settings.shelfEnabled = !settings.shelfEnabled;
       saveSettings();
       renderUi();
       scheduleScan();
@@ -1034,27 +1178,177 @@
       observer.disconnect();
     }
 
-    observer = new MutationObserver(scheduleScan);
+    // Use a debounced scan to avoid excessive re-scanning on infinite scroll
+    observer = new MutationObserver((mutations) => {
+      if (isDestroyed) return;
+      let shouldScan = false;
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              // Check if added node is a video container or contains video containers
+              if (node.matches && node.matches(CONTAINER_SELECTOR)) {
+                shouldScan = true;
+                break;
+              }
+              if (node.querySelector && node.querySelector(CONTAINER_SELECTOR)) {
+                shouldScan = true;
+                break;
+              }
+            }
+          }
+        }
+        if (shouldScan) break;
+      }
+      if (shouldScan) {
+        scheduleScan();
+      }
+    });
     observer.observe(target, {
       childList: true,
       subtree: true,
-      characterData: true,
+      characterData: false,
     });
   }
 
+  function isHomePage() {
+    // Check if we're on YouTube home page or feed pages where filters should work by default
+    const path = window.location.pathname;
+    const feedPaths = ['/', '', '/feed', '/feed/subscriptions', '/feed/history', '/feed/playlists', '/feed/watch_later', '/feed/liked'];
+    return feedPaths.some(p => path === p || path.startsWith(p + '/')) || path.startsWith('/feed/');
+  }
+
+  function isSearchPage() {
+    const path = window.location.pathname;
+    return path === '/results' || path.startsWith('/results/');
+  }
+
   function scheduleScan() {
+    if (isDestroyed) return;
+    if (!settings.applyEverywhere && (!isHomePage() || isSearchPage())) {
+      return;
+    }
     window.clearTimeout(scanTimer);
-    scanTimer = window.setTimeout(scanPage, 120);
+    window.clearTimeout(scanDebounceTimer);
+    scanDebounceTimer = window.setTimeout(() => {
+      if (!isDestroyed) {
+        scanTimer = window.setTimeout(scanPage, 120);
+      }
+    }, SCAN_DEBOUNCE_MS);
+  }
+
+  function isVideoContainer(element) {
+    // Check if it contains a video link (/watch or /shorts) - check element and children
+    const videoLink = element.querySelector('a[href^="/watch"], a[href^="/shorts"]') || 
+                      (element.tagName === 'A' && element.href && (element.href.includes('/watch') || element.href.includes('/shorts')));
+    
+    // Check for date text in element
+    const text = element.textContent || '';
+    const hasDate = /\d+\s*(секунд|секунды|секунда|мин|минут|минуты|час|часа|часов|ч\.|д\.|дн|дня|дней|нед|недели|недель|мес|месяца|месяцев|г\.|лет|года|год|seconds|minutes|hours|days|weeks|months|years)\s*(назад|ago)/i.test(text);
+    
+    // If it has both link and date, it's a video container
+    if (videoLink && hasDate) return true;
+    
+    // If it's a GROUP element, check sibling heading for link
+    if (element.tagName === 'GROUP') {
+      const prevHeading = element.previousElementSibling;
+      if (prevHeading && prevHeading.querySelector('a[href^="/watch"], a[href^="/shorts"]')) return true;
+      // Also check if heading has date (rare case)
+      if (prevHeading && /\d+\s*(секунд|секунды|секунда|мин|минут|минуты|час|часа|часов|ч\.|д\.|дн|дня|дней|нед|недели|недель|мес|месяца|месяцев|г\.|лет|года|год|seconds|minutes|hours|days|weeks|months|years)\s*(назад|ago)/i.test(prevHeading.textContent || '')) return true;
+      return true; // GROUP elements in main are likely video entries
+    }
+    
+    // If it's a heading-like element with link, check sibling group for date
+    if (videoLink && !hasDate) {
+      const nextGroup = element.nextElementSibling;
+      if (nextGroup && nextGroup.tagName === 'GROUP') return true;
+      // Also check if next sibling has date text
+      if (nextGroup && /\d+\s*(секунд|секунды|секунда|мин|минут|минуты|час|часа|часов|ч\.|д\.|дн|дня|дней|нед|недели|недель|мес|месяца|месяцев|г\.|лет|года|год|seconds|minutes|hours|days|weeks|months|years)\s*(назад|ago)/i.test(nextGroup.textContent || '')) return true;
+      // If it has link but no date in sibling, still might be valid (date could be elsewhere)
+      return true;
+    }
+    
+    // If it has date but no link, check siblings for link
+    if (hasDate && !videoLink) {
+      const prevLink = element.previousElementSibling?.querySelector?.('a[href^="/watch"], a[href^="/shorts"]');
+      const nextLink = element.nextElementSibling?.querySelector?.('a[href^="/watch"], a[href^="/shorts"]');
+      if (prevLink || nextLink) return true;
+    }
+    
+    // Fallback: check parent/sibling for link (for heading+group pattern)
+    const parentLink = element.closest('a[href^="/watch"], a[href^="/shorts"]');
+    if (parentLink) return true;
+    
+    return false;
+  }
+
+  function findVideoEntries() {
+    // Structural approach: find all elements with video links, then pair with date siblings
+    const entries = [];
+    const seen = new Set();
+
+    // Find all elements that have or are video links
+    const linkElements = document.querySelectorAll('a[href^="/watch"], a[href^="/shorts"]');
+    
+    for (const link of linkElements) {
+      // Find the container - walk up to find a heading-like parent or use the link's parent
+      let container = link.closest('[role="heading"]') || link.parentElement;
+      
+      // Skip if already seen
+      if (seen.has(container)) continue;
+      
+      // Check if this container or its next sibling has date text
+      let dateText = container.textContent || '';
+      let nextSibling = container.nextElementSibling;
+      
+      // Check next few siblings for date (heading+group pattern)
+      for (let i = 0; i < 3 && nextSibling; i++) {
+        if (/\d+\s*(секунд|секунды|секунда|мин|минут|минуты|час|часа|часов|ч\.|д\.|дн|дня|дней|нед|недели|недель|мес|месяца|месяцев|г\.|лет|года|год|seconds|minutes|hours|days|weeks|months|years)\s*(назад|ago)/i.test(nextSibling.textContent || '')) {
+          dateText = nextSibling.textContent || '';
+          break;
+        }
+        nextSibling = nextSibling.nextElementSibling;
+      }
+      
+      if (/\d+\s*(секунд|секунды|секунда|мин|минут|минуты|час|часа|часов|ч\.|д\.|дн|дня|дней|нед|недели|недель|мес|месяца|месяцев|г\.|лет|года|год|seconds|minutes|hours|days|weeks|months|years)\s*(назад|ago)/i.test(dateText)) {
+        entries.push({ container, dateText, titleEl: link });
+        seen.add(container);
+      }
+    }
+
+    // Also include standard containers as fallback
+    const standardContainers = document.querySelectorAll(CONTAINER_SELECTOR);
+    for (const container of standardContainers) {
+      if (seen.has(container)) continue;
+      const link = container.querySelector('a[href^="/watch"], a[href^="/shorts"]');
+      if (link) {
+        entries.push({ container, dateText: container.textContent || '', titleEl: link });
+        seen.add(container);
+      }
+    }
+
+    return entries;
   }
 
   function scanPage() {
+    if (!settings.applyEverywhere && (!isHomePage() || isSearchPage())) {
+      return;
+    }
+    if (isDestroyed) return;
     const seenContainers = new Set();
     const hiddenContainers = new Set();
-    const containers = document.querySelectorAll(CONTAINER_SELECTORS.join(','));
 
-    for (const container of containers) {
+    // Get video entries using structural approach
+    const entries = findVideoEntries();
+
+    console.log('[YT Filter] scanPage found', entries.length, 'video entries');
+    let processed = 0;
+    for (const entry of entries) {
+      if (isDestroyed) break;
+      const container = entry.container;
+
       const ancestor = container.parentElement
-        ? container.parentElement.closest(CONTAINER_SELECTORS.join(','))
+        ? container.parentElement.closest(CONTAINER_SELECTOR)
         : null;
       if (ancestor) {
         continue;
@@ -1065,16 +1359,28 @@
       }
 
       seenContainers.add(container);
+      processed++;
 
       if (computeHide(container)) {
         container.setAttribute('data-ytlf-hidden', 'true');
+        // Also hide associated siblings for heading/group pattern
+        const nextGroup = container.nextElementSibling;
+        if (nextGroup && (nextGroup.tagName === 'GROUP' || /\d+\s*(секунд|секунды|секунда|мин|минут|минуты|час|часа|часов|ч\.|д\.|дн|дня|дней|нед|недели|недель|мес|месяца|месяцев|г\.|лет|года|год|seconds|minutes|hours|days|weeks|months|years)\s*(назад|ago)/i.test(nextGroup.textContent || ''))) {
+          nextGroup.setAttribute('data-ytlf-hidden', 'true');
+        }
         hiddenContainers.add(container);
       } else {
         container.removeAttribute('data-ytlf-hidden');
+        const nextGroup = container.nextElementSibling;
+        if (nextGroup && (nextGroup.tagName === 'GROUP' || /\d+\s*(секунд|секунды|секунда|мин|минут|минуты|час|часа|часов|ч\.|д\.|дн|дня|дней|нед|недели|недель|мес|месяца|месяцев|г\.|лет|года|год|seconds|minutes|hours|days|weeks|months|years)\s*(назад|ago)/i.test(nextGroup.textContent || ''))) {
+          nextGroup.removeAttribute('data-ytlf-hidden');
+        }
       }
     }
+    console.log('[YT Filter] scanPage processed', processed, 'unique containers, hidden:', hiddenContainers.size);
 
     updateStatus(hiddenContainers.size, seenContainers.size);
+    hideShelfContainers();
   }
 
   function computeHide(container) {
@@ -1087,23 +1393,47 @@
 
     if (settings.recencyEnabled) {
       const age = readAgeSeconds(container);
+      console.log('[YT Filter] computeHide recency check: age=', age, 'container=', container.tagName);
       if (age !== null) {
         const minAge = recencyToSeconds('min');
         const maxAge = recencyToSeconds('max');
+        console.log('[YT Filter] computeHide recency range: minAge=', minAge, 'maxAge=', maxAge);
         if (age < minAge || age > maxAge) {
+          console.log('[YT Filter] computeHide: HIDING by recency (age:', age, 'not in range', minAge, '-', maxAge, ')');
           return true;
         }
+      } else {
+        console.log('[YT Filter] computeHide: age is null, not hiding by recency');
       }
     }
 
-    if (settings.jamEnabled && isIrritant(container)) {
+    if (settings.jamEnabled && isJamItem(container)) {
+      return true;
+    }
+
+    if (settings.shelfEnabled && isShelfItem(container)) {
       return true;
     }
 
     return false;
   }
 
-  function isIrritant(container) {
+  function isJamsCategorySelected() {
+    const tabs = document.querySelectorAll('tp-yt-tab[role="tab"], ytd-tab[role="tab"], [role="tab"]');
+    for (const tab of tabs) {
+      const text = (tab.textContent || '').trim();
+      if (text === 'Джемы' && (tab.getAttribute('aria-selected') === 'true' || tab.classList.contains('selected'))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function isJamItem(container) {
+    if (isJamsCategorySelected()) {
+      return false;
+    }
+
     const keywords = ['джем'];
     const extra = (settings.irritantsKeywords || '')
       .split(',')
@@ -1131,6 +1461,100 @@
         if (sectionText.includes(keyword)) {
           return true;
         }
+      }
+    }
+
+    return false;
+  }
+
+  function isShelfContainer(element) {
+    // Check if this element is a shelf container we want to hide
+    if (!element.matches('ytd-rich-section-renderer, ytd-rich-shelf-renderer, ytd-shelf-renderer, ytd-item-section-renderer')) {
+      return false;
+    }
+
+    const text = (element.textContent || '').toLowerCase();
+
+    // Check for "Shorts" shelf - look for ytd-reel-item-renderer inside or heading "Shorts"
+    const hasShorts = element.querySelector('ytd-reel-item-renderer') ||
+      element.querySelector('ytd-reel-video-renderer') ||
+      text.includes('shorts');
+
+    // Check for "Ещё темы" shelf
+    const hasMoreThemes = /ещё темы|еще темы/i.test(text);
+
+    // Check for "Самые актуальные" shelf
+    const hasMostRelevant = /самые актуальные|most relevant/i.test(text);
+
+    // Check for other recommendation shelves (topic shelves, etc.)
+    const hasChips = element.querySelector('ytd-chips-shelf-with-video-shelf-renderer');
+
+    return hasShorts || hasMoreThemes || hasMostRelevant || hasChips;
+  }
+
+  function hideShelfContainers() {
+    if (!settings.shelfEnabled) return;
+
+    // Don't hide shelves on search page - they are part of search results
+    if (isSearchPage()) return;
+
+    const shelfSelectors = 'ytd-rich-section-renderer, ytd-rich-shelf-renderer, ytd-shelf-renderer, ytd-item-section-renderer';
+    const shelves = document.querySelectorAll(shelfSelectors);
+
+    for (const shelf of shelves) {
+      if (isShelfContainer(shelf)) {
+        // Hide the shelf container
+        shelf.setAttribute('data-ytlf-hidden', 'true');
+
+        // Also hide the preceding header (h2, h3, etc.) that belongs to this shelf
+        let prev = shelf.previousElementSibling;
+        while (prev) {
+          // Stop if we hit another shelf container or a video item
+          if (prev.matches('ytd-rich-section-renderer, ytd-rich-shelf-renderer, ytd-shelf-renderer, ytd-item-section-renderer, ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer')) {
+            break;
+          }
+          // Hide heading elements that are likely shelf headers
+          if (prev.matches('h1, h2, h3, h4, h5, h6, ytd-section-header-renderer, yt-section-header-view-model')) {
+            prev.setAttribute('data-ytlf-hidden', 'true');
+            break;
+          }
+          // Also hide button "Ещё" that might be next to header
+          if (prev.matches('button[aria-label*="Ещё"], button[aria-label*="More"]')) {
+            prev.setAttribute('data-ytlf-hidden', 'true');
+          }
+          prev = prev.previousElementSibling;
+        }
+      } else {
+        shelf.removeAttribute('data-ytlf-hidden');
+        // Also unhide any headers we might have hidden
+        let prev = shelf.previousElementSibling;
+        while (prev) {
+          if (prev.matches('ytd-rich-section-renderer, ytd-rich-shelf-renderer, ytd-shelf-renderer, ytd-item-section-renderer, ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer')) {
+            break;
+          }
+          if (prev.matches('h1, h2, h3, h4, h5, h6, ytd-section-header-renderer, yt-section-header-view-model, button[aria-label*="Ещё"], button[aria-label*="More"]')) {
+            prev.removeAttribute('data-ytlf-hidden');
+          }
+          prev = prev.previousElementSibling;
+        }
+      }
+    }
+  }
+
+  function isShelfItem(container) {
+    // This is now only used for video items inside shelves
+    // We check if the video item is inside a shelf container that should be hidden
+    const shelfSelectors = [
+      'ytd-rich-section-renderer',
+      'ytd-rich-shelf-renderer',
+      'ytd-shelf-renderer',
+      'ytd-item-section-renderer',
+    ];
+
+    for (const selector of shelfSelectors) {
+      const shelf = container.closest(selector);
+      if (shelf && isShelfContainer(shelf)) {
+        return true;
       }
     }
 
@@ -1173,15 +1597,51 @@
   }
 
   function readAgeSeconds(container) {
-    const nodes = container.querySelectorAll('#published-time-text, #metadata-line, ytd-video-meta-block');
+    // Try specific metadata elements first
+    const nodes = container.querySelectorAll('#published-time-text, #metadata-line, ytd-video-meta-block, ytd-video-metadata-block, .ytd-video-meta-block, #byline-container, .ytd-video-meta-block, ytd-grid-video-renderer #metadata-line, ytd-rich-item-renderer #metadata-line, .ytd-video-renderer #metadata-line');
     let text = '';
     for (const node of nodes) {
       text += ' ' + (node.textContent || '');
     }
+    // Fallback to container text content
     if (!text.trim()) {
       text = container.textContent || '';
     }
-    return parseAgeText(text);
+    // Subscriptions page: heading + group pattern - check siblings (for actual H3/H2/GROUP tags)
+    if ((container.tagName === 'H3' || container.tagName === 'H2') && !text.trim()) {
+      const nextGroup = container.nextElementSibling;
+      if (nextGroup && nextGroup.tagName === 'GROUP') {
+        text = nextGroup.textContent || '';
+      }
+    }
+    // Subscriptions page: group element - check previous sibling heading
+    if (container.tagName === 'GROUP' && !text.trim()) {
+      const prevHeading = container.previousElementSibling;
+      if (prevHeading && (prevHeading.tagName === 'H3' || prevHeading.tagName === 'H2')) {
+        text = prevHeading.textContent + ' ' + (container.textContent || '');
+      }
+    }
+    // For YouTube component containers (ytd-rich-grid-media, ytd-rich-grid-row, etc.)
+    // Use full text content which should contain the date
+    const result = parseAgeText(text);
+    // Find video title for debugging
+    let title = '';
+    if (container.tagName === 'H3' || container.tagName === 'H2') {
+      const link = container.querySelector('a');
+      if (link) title = link.textContent.trim().substring(0, 50);
+    } else if (container.tagName === 'GROUP') {
+      const prevHeading = container.previousElementSibling;
+      if (prevHeading && (prevHeading.tagName === 'H3' || prevHeading.tagName === 'H2')) {
+        const link = prevHeading.querySelector('a');
+        if (link) title = link.textContent.trim().substring(0, 50);
+      }
+    } else {
+      // For YouTube component containers, find the video title link
+      const titleEl = container.querySelector('h3 a, #video-title, .ytd-video-renderer h3 a, a[href^="/watch"], a[href^="/shorts"]');
+      if (titleEl) title = titleEl.textContent.trim().substring(0, 50);
+    }
+    console.log('[YT Filter] readAgeSeconds container:', container.tagName, 'class:', container.className, 'title:', title, 'text sample:', text.substring(0, 100), 'result:', result);
+    return result;
   }
 
   function parseAgeText(text) {
@@ -1193,13 +1653,22 @@
 
     const unitWords = Object.keys(RECENCY_WORD_TO_UNIT);
     const unitAlt = unitWords.slice().sort((a, b) => b.length - a.length).join('|');
-    const relRegex = new RegExp('(\\d+)\\s*(' + unitAlt + ')\\s*(назад|ago)', 'i');
-    const relMatch = relRegex.exec(normalized);
-    if (relMatch) {
-      const amount = Number.parseInt(relMatch[1], 10);
-      const unitKey = RECENCY_WORD_TO_UNIT[String(relMatch[2]).toLowerCase()];
+    // Match time ago patterns - allow punctuation between unit and "назад"
+    const relRegex = new RegExp('(\\d+)\\s*(' + unitAlt + ')\\s*[.]*\\s*(назад|ago)', 'ig');
+    let relMatch;
+    let lastMatch = null;
+    // Find the LAST match (in case there are view counts like "210 тыс" before the date)
+    while ((relMatch = relRegex.exec(normalized)) !== null) {
+      lastMatch = relMatch;
+    }
+    if (lastMatch) {
+      const amount = Number.parseInt(lastMatch[1], 10);
+      const unitKey = RECENCY_WORD_TO_UNIT[String(lastMatch[2]).toLowerCase()];
+      console.log('[YT Filter] parseAgeText match:', lastMatch[0], 'amount:', amount, 'unit:', lastMatch[2], 'unitKey:', unitKey);
       if (Number.isFinite(amount) && unitKey && RECENCY_UNITS[unitKey]) {
-        return amount * RECENCY_UNITS[unitKey];
+        const result = amount * RECENCY_UNITS[unitKey];
+        console.log('[YT Filter] parseAgeText result:', result, 'seconds');
+        return result;
       }
     }
 
@@ -1207,10 +1676,12 @@
     if (absolute !== null) {
       const age = (Date.now() - absolute) / 1000;
       if (age >= 0) {
+        console.log('[YT Filter] parseAgeText absolute date result:', age, 'seconds');
         return age;
       }
     }
 
+    console.log('[YT Filter] parseAgeText no match for:', normalized.substring(0, 200));
     return null;
   }
 
@@ -1220,6 +1691,18 @@
       января: 1, февраля: 2, марта: 3, апреля: 4, мая: 5, июня: 6, июля: 7, августа: 8,
       сентября: 9, октября: 10, ноября: 11, декабря: 12,
     };
+
+    // Match "Дата премьеры: 09.10.2026, 17:00" or "09.10.2026"
+    const numericDateMatch = text.match(/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/);
+    if (numericDateMatch) {
+      const day = Number(numericDateMatch[1]);
+      const month = Number(numericDateMatch[2]) - 1;
+      const year = Number(numericDateMatch[3]);
+      const ts = Date.UTC(year, month, day);
+      if (!Number.isNaN(ts)) {
+        return ts;
+      }
+    }
 
     const ruMatch = text.match(/\b(\d{1,2})\s+([а-яА-ЯёЄїҐа-я]+)\.?\s+(\d{4})\b/);
     if (ruMatch) {
@@ -1249,14 +1732,19 @@
       if (!value || value < 0) {
         return 0;
       }
-      return value * RECENCY_UNITS[settings.recencyMinUnit];
+      const result = value * RECENCY_UNITS[settings.recencyMinUnit];
+      console.log('[YT Filter] recencyToSeconds min:', value, settings.recencyMinUnit, '=', result, 'RECENCY_UNITS[min]:', RECENCY_UNITS[settings.recencyMinUnit]);
+      return result;
     }
 
     const value = settings.recencyMaxValue;
     if (!value || value <= 0) {
+      console.log('[YT Filter] recencyToSeconds max: Infinity (value <= 0), value:', value, 'unit:', settings.recencyMaxUnit);
       return Infinity;
     }
-    return value * RECENCY_UNITS[settings.recencyMaxUnit];
+    const result = value * RECENCY_UNITS[settings.recencyMaxUnit];
+    console.log('[YT Filter] recencyToSeconds max:', value, settings.recencyMaxUnit, '=', result, 'RECENCY_UNITS[max]:', RECENCY_UNITS[settings.recencyMaxUnit]);
+    return result;
   }
 
   function updateRangeFromSlider(changed) {
@@ -1298,6 +1786,8 @@
     const unit = kind === 'min' ? ui.recencyMinUnit : ui.recencyMaxUnit;
     const value = input.value.trim() === '' ? 0 : Math.max(0, toNumber(input.value, 0));
 
+    console.log('[YT Filter] updateRecency', kind, 'value:', value, 'unit.value:', unit.value, 'unit:', unit);
+
     if (kind === 'min') {
       settings.recencyMinValue = value;
       settings.recencyMinUnit = unit.value;
@@ -1305,6 +1795,8 @@
       settings.recencyMaxValue = value;
       settings.recencyMaxUnit = unit.value;
     }
+
+    console.log('[YT Filter] updateRecency saved:', kind, settings.recencyMaxValue, settings.recencyMaxUnit);
 
     saveSettings();
     renderUi();
@@ -1415,9 +1907,11 @@
     ui.recencyTab.hidden = settings.tab !== 'recency';
     ui.irritantsTab.hidden = settings.tab !== 'irritants';
 
+    ui.applyEverywhereEnabled.checked = settings.applyEverywhere;
     ui.durationEnabled.checked = settings.durationEnabled;
     ui.recencyEnabled.checked = settings.recencyEnabled;
     ui.jamEnabled.checked = settings.jamEnabled;
+    ui.shelfEnabled.checked = settings.shelfEnabled;
     if (document.activeElement !== ui.irritantsKeywords) {
       ui.irritantsKeywords.value = settings.irritantsKeywords || '';
     }
@@ -1453,8 +1947,10 @@
     const durationState = settings.durationEnabled ? 'вкл' : 'выкл';
     const recencyState = settings.recencyEnabled ? 'вкл' : 'выкл';
     const jamState = settings.jamEnabled ? 'вкл' : 'выкл';
+    const shelfState = settings.shelfEnabled ? 'вкл' : 'выкл';
+    const applyEverywhereState = settings.applyEverywhere ? 'вкл' : 'выкл';
     ui.status.textContent =
-      `Длительность: ${durationState}. Новизна: ${recencyState}. Джемы: ${jamState}. ` +
+      `Применять везде: ${applyEverywhereState}. Длительность: ${durationState}. Новизна: ${recencyState}. Джемы: ${jamState}. Полки: ${shelfState}. ` +
       `Скрыто: ${hiddenCount}. Всего видео: ${totalCount}.`;
   }
 
@@ -1517,5 +2013,19 @@
     if (event.key === 'Enter') {
       event.currentTarget.blur();
     }
+  }
+
+  function attachTooltip(row, tooltip) {
+    let timer = 0;
+    const show = () => tooltip.classList.add('ytlf-tooltip-visible');
+    const hide = () => {
+      window.clearTimeout(timer);
+      tooltip.classList.remove('ytlf-tooltip-visible');
+    };
+
+    row.addEventListener('mouseenter', () => {
+      timer = window.setTimeout(show, 450);
+    });
+    row.addEventListener('mouseleave', hide);
   }
 })();
