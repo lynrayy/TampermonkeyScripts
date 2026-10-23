@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bloomly Undistractable
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      1.3
 // @description  Normalize "Dealers' Den" menu button style to match other menu items
 // @author       Lynrayy
 // @match        https://bloomly.fun/*
@@ -39,9 +39,6 @@
         'boxShadow', 'transform', 'transition'
     ];
 
-    // Hover/focus/active states to normalize
-    const INTERACTION_STATES = [':hover', ':focus', ':active', ':focus-visible'];
-
     function getReferenceElement() {
         for (const selector of REFERENCE_SELECTORS) {
             const el = document.querySelector(selector);
@@ -57,68 +54,6 @@
             }
         }
         return null;
-    }
-
-    function injectHoverStyles() {
-        const dealersDen = document.querySelector(DEALERS_DEN_SELECTOR);
-        const reference = getReferenceElement();
-        if (!dealersDen || !reference) return;
-
-        // Get reference element's classes to match its hover rules
-        const refClasses = Array.from(reference.classList).join('.');
-        const refTag = reference.tagName.toLowerCase();
-        const refSelector = `${refTag}${refClasses ? '.' + refClasses : ''}`;
-
-        // Create style element to override hover/focus/active states
-        let styleEl = document.getElementById('bloomly-undistractable-hover');
-        if (!styleEl) {
-            styleEl = document.createElement('style');
-            styleEl.id = 'bloomly-undistractable-hover';
-            document.head.appendChild(styleEl);
-        }
-
-        // Build CSS that forces Dealers' Den to use same interaction styles as reference
-        // We target the Dealers' Den specifically and reset its interaction states
-        // to match the general nav link behavior
-        const css = `
-            /* Normalize Dealers' Den interaction states to match other menu items */
-            ${DEALERS_DEN_SELECTOR}:hover,
-            ${DEALERS_DEN_SELECTOR}:focus,
-            ${DEALERS_DEN_SELECTOR}:active,
-            ${DEALERS_DEN_SELECTOR}:focus-visible {
-                /* Reset any special hover styles */
-                background-color: inherit !important;
-                color: inherit !important;
-                border-color: inherit !important;
-                box-shadow: inherit !important;
-                transform: inherit !important;
-                filter: inherit !important;
-                opacity: inherit !important;
-                text-decoration: inherit !important;
-            }
-
-            /* Ensure icon inside also matches on interaction */
-            ${DEALERS_DEN_SELECTOR}:hover img,
-            ${DEALERS_DEN_SELECTOR}:hover svg,
-            ${DEALERS_DEN_SELECTOR}:hover i,
-            ${DEALERS_DEN_SELECTOR}:hover [class*="icon"],
-            ${DEALERS_DEN_SELECTOR}:focus img,
-            ${DEALERS_DEN_SELECTOR}:focus svg,
-            ${DEALERS_DEN_SELECTOR}:focus i,
-            ${DEALERS_DEN_SELECTOR}:focus [class*="icon"],
-            ${DEALERS_DEN_SELECTOR}:active img,
-            ${DEALERS_DEN_SELECTOR}:active svg,
-            ${DEALERS_DEN_SELECTOR}:active i,
-            ${DEALERS_DEN_SELECTOR}:active [class*="icon"] {
-                filter: none !important;
-                opacity: inherit !important;
-                transform: inherit !important;
-            }
-        `;
-
-        if (styleEl.textContent !== css.trim()) {
-            styleEl.textContent = css;
-        }
     }
 
     function normalizeDealersDen() {
@@ -142,7 +77,25 @@
 
         if (!needsUpdate) return false;
 
-        // Apply reference styles to Dealers' Den
+        // 1. Copy all classes from reference to Dealers' Den (for CSS hover/focus rules)
+        const refClasses = Array.from(reference.classList);
+        refClasses.forEach(cls => {
+            if (!dealersDen.classList.contains(cls)) {
+                dealersDen.classList.add(cls);
+            }
+        });
+
+        // 2. Remove special classes that might add unique styling
+        const classList = Array.from(dealersDen.classList);
+        classList.forEach(cls => {
+            if (cls.includes('dealers') || cls.includes('den') || cls.includes('highlight') ||
+                cls.includes('special') || cls.includes('featured') || cls.includes('promo') ||
+                cls.includes('unique') || cls.includes('cta') || cls.includes('primary')) {
+                dealersDen.classList.remove(cls);
+            }
+        });
+
+        // 3. Apply reference inline styles to Dealers' Den
         for (const prop of STYLES_TO_COPY) {
             const value = refStyles[prop];
             if (value && value !== 'initial' && value !== 'inherit' && value !== 'unset') {
@@ -150,19 +103,18 @@
             }
         }
 
-        // Remove any classes that might be adding special styling
-        const classList = Array.from(dealersDen.classList);
-        classList.forEach(cls => {
-            if (cls.includes('dealers') || cls.includes('den') || cls.includes('highlight') ||
-                cls.includes('special') || cls.includes('featured') || cls.includes('promo')) {
-                dealersDen.classList.remove(cls);
-            }
-        });
-
-        // Normalize the inner icon to match reference icons
+        // 4. Normalize the inner icon to match reference icons
         const ddImg = dealersDen.querySelector('img, svg, i, [class*="icon"]');
         const refImg = reference.querySelector('img, svg, i, [class*="icon"]');
         if (ddImg && refImg) {
+            // Copy icon classes
+            const refImgClasses = Array.from(refImg.classList);
+            refImgClasses.forEach(cls => {
+                if (!ddImg.classList.contains(cls)) {
+                    ddImg.classList.add(cls);
+                }
+            });
+
             const refImgStyles = window.getComputedStyle(refImg);
             const ddImgStyles = window.getComputedStyle(ddImg);
             for (const prop of ICON_STYLES_TO_COPY) {
@@ -175,9 +127,6 @@
                 ddImg.style.setProperty('filter', 'none', 'important');
             }
         }
-
-        // Inject hover/focus/active styles
-        injectHoverStyles();
 
         return true;
     }
