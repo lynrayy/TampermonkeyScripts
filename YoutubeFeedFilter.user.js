@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Feed Filter
 // @namespace    https://github.com/local/youtube-length-filter
-// @version      2.0.23
+// @version      2.0.24
 // @description  Hides YouTube videos outside a configurable duration range and/or outside a recency (publish age) range. Hides jam playlists and shelf sections.
 // @author       Lynrayy
 // @match        https://*.youtube.com/*
@@ -18,7 +18,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '2.0.23';
+    const SCRIPT_VERSION = '2.0.24';
     const STORAGE_KEY = 'yt-length-filter-settings-v1';
   const SLIDER_MAX_SECONDS = 2 * 60 * 60;
   const STORED_MAX_SECONDS = 12 * 60 * 60;
@@ -1223,6 +1223,11 @@
     return path === '/results' || path.startsWith('/results/');
   }
 
+  function isWatchPage() {
+    const path = window.location.pathname;
+    return path === '/watch' || path.startsWith('/watch/');
+  }
+
   function scheduleScan() {
     if (isDestroyed) return;
     if (!settings.applyEverywhere && (!isHomePage() || isSearchPage())) {
@@ -1496,7 +1501,8 @@
     if (!settings.shelfEnabled) return;
 
     // Don't hide shelves on search page - they are part of search results
-    if (isSearchPage()) return;
+    // Don't hide shelves on watch page - recommended videos are not "shelves" to hide
+    if (isSearchPage() || isWatchPage()) return;
 
     const shelfSelectors = 'ytd-rich-section-renderer, ytd-rich-shelf-renderer, ytd-shelf-renderer, ytd-item-section-renderer';
     const shelves = document.querySelectorAll(shelfSelectors);
