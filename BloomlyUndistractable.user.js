@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bloomly Undistractable
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  Normalize "Dealers' Den" menu button style to match other menu items
 // @author       Lynrayy
 // @match        https://bloomly.fun/*
@@ -39,6 +39,9 @@
         'boxShadow', 'transform', 'transition'
     ];
 
+    // Hover/focus/active states to normalize
+    const INTERACTION_STATES = [':hover', ':focus', ':active', ':focus-visible'];
+
     function getReferenceElement() {
         for (const selector of REFERENCE_SELECTORS) {
             const el = document.querySelector(selector);
@@ -54,6 +57,68 @@
             }
         }
         return null;
+    }
+
+    function injectHoverStyles() {
+        const dealersDen = document.querySelector(DEALERS_DEN_SELECTOR);
+        const reference = getReferenceElement();
+        if (!dealersDen || !reference) return;
+
+        // Get reference element's classes to match its hover rules
+        const refClasses = Array.from(reference.classList).join('.');
+        const refTag = reference.tagName.toLowerCase();
+        const refSelector = `${refTag}${refClasses ? '.' + refClasses : ''}`;
+
+        // Create style element to override hover/focus/active states
+        let styleEl = document.getElementById('bloomly-undistractable-hover');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'bloomly-undistractable-hover';
+            document.head.appendChild(styleEl);
+        }
+
+        // Build CSS that forces Dealers' Den to use same interaction styles as reference
+        // We target the Dealers' Den specifically and reset its interaction states
+        // to match the general nav link behavior
+        const css = `
+            /* Normalize Dealers' Den interaction states to match other menu items */
+            ${DEALERS_DEN_SELECTOR}:hover,
+            ${DEALERS_DEN_SELECTOR}:focus,
+            ${DEALERS_DEN_SELECTOR}:active,
+            ${DEALERS_DEN_SELECTOR}:focus-visible {
+                /* Reset any special hover styles */
+                background-color: inherit !important;
+                color: inherit !important;
+                border-color: inherit !important;
+                box-shadow: inherit !important;
+                transform: inherit !important;
+                filter: inherit !important;
+                opacity: inherit !important;
+                text-decoration: inherit !important;
+            }
+
+            /* Ensure icon inside also matches on interaction */
+            ${DEALERS_DEN_SELECTOR}:hover img,
+            ${DEALERS_DEN_SELECTOR}:hover svg,
+            ${DEALERS_DEN_SELECTOR}:hover i,
+            ${DEALERS_DEN_SELECTOR}:hover [class*="icon"],
+            ${DEALERS_DEN_SELECTOR}:focus img,
+            ${DEALERS_DEN_SELECTOR}:focus svg,
+            ${DEALERS_DEN_SELECTOR}:focus i,
+            ${DEALERS_DEN_SELECTOR}:focus [class*="icon"],
+            ${DEALERS_DEN_SELECTOR}:active img,
+            ${DEALERS_DEN_SELECTOR}:active svg,
+            ${DEALERS_DEN_SELECTOR}:active i,
+            ${DEALERS_DEN_SELECTOR}:active [class*="icon"] {
+                filter: none !important;
+                opacity: inherit !important;
+                transform: inherit !important;
+            }
+        `;
+
+        if (styleEl.textContent !== css.trim()) {
+            styleEl.textContent = css;
+        }
     }
 
     function normalizeDealersDen() {
@@ -110,6 +175,9 @@
                 ddImg.style.setProperty('filter', 'none', 'important');
             }
         }
+
+        // Inject hover/focus/active styles
+        injectHoverStyles();
 
         return true;
     }
