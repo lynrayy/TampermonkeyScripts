@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bloomly Undistractable
 // @namespace    http://tampermonkey.net/
-// @version      1.7
+// @version      1.8
 // @description  Normalize "Dealers' Den" menu button style to match other menu items
 // @author       Lynrayy
 // @match        https://bloomly.fun/*
@@ -21,9 +21,26 @@
         'aside a[href="/scheduled-posts"]', // Черновики и отложенные (same section)
         'nav a[href="/"]',             // Главная
         'nav a[href="/explore"]',      // Интересное
+        'nav a[href="/notifications"]', // Уведомления
+        'nav a[href="/messages"]',     // Сообщения
+        'nav a[href="/friends"]',      // Друзья
+        'nav a[href="/groups"]',       // Группы
+        'nav a[href="/bookmarks"]',    // Закладки
+        'nav a[href="/subscriptions"]', // Premium
+        'nav a[href="/settings/profile"]', // Настройки
     ];
 
-    // Styles to copy from reference (excludes layout that should stay natural)
+    const ACTIVE_CLASS_PATTERNS = [
+        'active', 'current', 'selected', 'router-link-active',
+        'router-link-exact-active', 'nuxt-link-active', 'nuxt-link-exact-active',
+        'is-active', 'v-active', 'nav-item-active', 'menu-item-active'
+    ];
+
+    const BLACKLISTED_CLASS_PATTERNS = [
+        'dealers', 'den', 'highlight', 'special', 'featured', 'promo',
+        'unique', 'cta', 'primary', 'accent', 'brand', 'custom'
+    ];
+
     const STYLES_TO_COPY = [
         'fontSize', 'fontWeight', 'fontFamily', 'lineHeight',
         'color', 'textDecoration', 'letterSpacing', 'textTransform',
@@ -34,17 +51,46 @@
         'borderTopStyle', 'borderRightStyle', 'borderBottomStyle', 'borderLeftStyle',
         'backgroundColor', 'backgroundImage', 'backgroundRepeat', 'backgroundPosition', 'backgroundSize',
         'gap', 'alignItems', 'justifyContent',
-        'transition', 'transitionDuration', 'transitionTimingFunction', 'transitionProperty'
+        'transition', 'transitionDuration', 'transitionTimingFunction', 'transitionProperty',
+        'boxShadow'
     ];
 
-    // Icon styles to copy
     const ICON_STYLES_TO_COPY = [
         'width', 'height', 'margin', 'padding', 'borderRadius',
         'opacity', 'filter', 'color', 'backgroundColor', 'background',
         'boxShadow', 'transform', 'transition', 'flexShrink'
     ];
 
-    function getReferenceElement() {
+    function isActiveElement(el) {
+        if (el.getAttribute('aria-current') === 'page') return true;
+        for (const cls of el.classList) {
+            const lower = cls.toLowerCase();
+            if (ACTIVE_CLASS_PATTERNS.some(p => lower.includes(p))) return true;
+        }
+        return false;
+    }
+
+    function isBlacklistedClass(className) {
+        const lower = className.toLowerCase();
+        return BLACKLISTED_CLASS_PATTERNS.some(p => lower.includes(p));
+    }
+
+    function getReferenceElement(preferActive = false) {
+        // First try to find an active element (not Dealers' Den)
+        if (preferActive) {
+            for (const selector of REFERENCE_SELECTORS) {
+                const el = document.querySelector(selector);
+                if (el && el.offsetParent !== null && isActiveElement(el)) return el;
+            }
+            // Fallback: any visible active nav/aside link
+            const allLinks = document.querySelectorAll('nav a[href^="/"], aside a[href^="/"]');
+            for (const el of allLinks) {
+                if (el.offsetParent !== null && !el.href.includes('/dealers-den') && isActiveElement(el)) {
+                    return el;
+                }
+            }
+        }
+        // Default: first visible reference
         for (const selector of REFERENCE_SELECTORS) {
             const el = document.querySelector(selector);
             if (el && el.offsetParent !== null) return el;
@@ -56,66 +102,66 @@
         return null;
     }
 
-    function isBlacklistedClass(className) {
-        const lower = className.toLowerCase();
-        return ['dealers', 'den', 'highlight', 'special', 'featured', 'promo', 'unique', 'cta', 'primary', 'accent', 'brand', 'custom'].some(p => lower.includes(p));
+    function copyStyles(target, source, properties) {
+        const srcStyles = getComputedStyle(source);
+        const tgtStyles = getComputedStyle(target);
+        for (const prop of properties) {
+            const val = srcStyles[prop];
+            if (val && val !== tgtStyles[prop] && val !== 'initial' && val !== 'inherit' && val !== 'unset') {
+                target.style.setProperty(prop, val, 'important');
+            }
+        }
+    }
+
+    function syncClasses(target, source) {
+        // Remove blacklisted
+        for (const cls of target.classList) {
+            if (isBlacklistedClass(cls)) target.classList.remove(cls);
+        }
+        // Add source classes
+        for (const cls of source.classList) {
+            if (!isBlacklistedClass(cls) && !target.classList.contains(cls)) {
+                target.classList.add(cls);
+            }
+        }
     }
 
     function normalizeDealersDen() {
         const dealersDen = document.querySelector(DEALERS_DEN_SELECTOR);
         if (!dealersDen) return;
 
-        const reference = getReferenceElement();
+        // Determine if Dealers' Den should be active
+        const isDealersDenActive = location.pathname === '/dealers-den' || location.pathname.startsWith('/dealers-den/');
+
+        // Get reference: active element if Dealers' Den is active, otherwise default
+        const reference = getReferenceElement(isDealersDenActive);
         if (!reference) return;
 
-        // 1. Remove blacklisted classes
-        for (const cls of dealersDen.classList) {
-            if (isBlacklistedClass(cls)) dealersDen.classList.remove(cls);
-        }
+        // Sync classes (this gives us hover/active CSS from site's stylesheet)
+        syncClasses(dealersDen, reference);
 
-        // 2. Copy reference classes (for CSS hover/active states)
-        for (const cls of reference.classList) {
-            if (!isBlacklistedClass(cls) && !dealersDen.classList.contains(cls)) {
-                dealersDen.classList.add(cls);
-            }
-        }
+        // Copy computed styles from reference
+        copyStyles(dealersDen, reference, STYLES_TO_COPY);
 
-        // 3. Copy computed styles
-        const refStyles = getComputedStyle(reference);
-        const ddStyles = getComputedStyle(dealersDen);
-        for (const prop of STYLES_TO_COPY) {
-            const val = refStyles[prop];
-            if (val && val !== ddStyles[prop] && val !== 'initial' && val !== 'inherit' && val !== 'unset') {
-                dealersDen.style.setProperty(prop, val, 'important');
-            }
-        }
-
-        // 4. Sync icon
+        // Sync icon
         const ddImg = dealersDen.querySelector('img, svg, i, [class*="icon"]');
         const refImg = reference.querySelector('img, svg, i, [class*="icon"]');
         if (ddImg && refImg) {
-            for (const cls of refImg.classList) {
-                if (!isBlacklistedClass(cls) && !ddImg.classList.contains(cls)) {
-                    ddImg.classList.add(cls);
-                }
-            }
-            for (const cls of ddImg.classList) {
-                if (isBlacklistedClass(cls)) ddImg.classList.remove(cls);
-            }
+            syncClasses(ddImg, refImg);
+            copyStyles(ddImg, refImg, ICON_STYLES_TO_COPY);
             const refImgStyles = getComputedStyle(refImg);
-            const ddImgStyles = getComputedStyle(ddImg);
-            for (const prop of ICON_STYLES_TO_COPY) {
-                const val = refImgStyles[prop];
-                if (val && val !== ddImgStyles[prop] && val !== 'initial' && val !== 'inherit' && val !== 'unset') {
-                    ddImg.style.setProperty(prop, val, 'important');
-                }
-            }
             if (!refImgStyles.filter || refImgStyles.filter === 'none') {
                 ddImg.style.setProperty('filter', 'none', 'important');
             }
         }
 
-        // 5. Inject minimal CSS for hover/active states (only what's needed)
+        // Set aria-current for CSS targeting
+        if (isDealersDenActive) {
+            dealersDen.setAttribute('aria-current', 'page');
+        } else {
+            dealersDen.removeAttribute('aria-current');
+        }
+
         injectMinimalCSS();
     }
 
@@ -124,7 +170,6 @@
         const style = document.createElement('style');
         style.id = 'bloomly-undistractable';
         style.textContent = `
-            /* Only override hover/active states - let copied classes/styles handle the rest */
             ${DEALERS_DEN_SELECTOR}:hover {
                 background-color: var(--hover-bg, rgba(255,255,255,0.08)) !important;
             }
@@ -156,19 +201,11 @@
         (document.head || document.documentElement).appendChild(style);
     }
 
-    function setActiveAttribute() {
-        const link = document.querySelector(DEALERS_DEN_SELECTOR);
-        if (!link) return;
-        const isActive = location.pathname === '/dealers-den' || location.pathname.startsWith('/dealers-den/');
-        if (isActive) link.setAttribute('aria-current', 'page');
-        else link.removeAttribute('aria-current');
-    }
-
     // Initial
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => { normalizeDealersDen(); setActiveAttribute(); });
+        document.addEventListener('DOMContentLoaded', normalizeDealersDen);
     } else {
-        normalizeDealersDen(); setActiveAttribute();
+        normalizeDealersDen();
     }
 
     // Re-run on navigation
@@ -177,13 +214,12 @@
         if (location.href !== lastUrl) {
             lastUrl = location.href;
             normalizeDealersDen();
-            setActiveAttribute();
         }
     }).observe(document, { subtree: true, childList: true });
 
-    window.addEventListener('popstate', () => { normalizeDealersDen(); setActiveAttribute(); });
-    window.addEventListener('hashchange', () => { normalizeDealersDen(); setActiveAttribute(); });
+    window.addEventListener('popstate', normalizeDealersDen);
+    window.addEventListener('hashchange', normalizeDealersDen);
 
     // Periodic fallback
-    setInterval(() => { normalizeDealersDen(); setActiveAttribute(); }, 3000);
+    setInterval(normalizeDealersDen, 3000);
 })();
