@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bloomly Undistractable
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @description  Normalize "Dealers' Den" menu button style to match other menu items
 // @author       Lynrayy
 // @match        https://bloomly.fun/*
@@ -28,7 +28,8 @@
         'active', 'current', 'selected', 'open', 'focused',
         'router-link-active', 'router-link-exact-active',
         'nuxt-link-active', 'nuxt-link-exact-active',
-        'v-active', 'is-active', 'has-focus'
+        'v-active', 'is-active', 'has-focus',
+        'nav-item-active', 'menu-item-active', 'sidebar-item-active'
     ];
 
     // Classes to always remove from Dealers' Den
@@ -52,6 +53,9 @@
         'opacity', 'filter', 'color', 'backgroundColor', 'background',
         'boxShadow', 'transform', 'transition'
     ];
+
+    let styleInjected = false;
+    let lastPathname = location.pathname;
 
     function getReferenceElement() {
         for (const selector of REFERENCE_SELECTORS) {
@@ -79,26 +83,111 @@
         return BLACKLISTED_CLASS_PATTERNS.some(pattern => lower.includes(pattern));
     }
 
+    function injectCriticalStyles() {
+        if (styleInjected) return;
+        
+        const styleEl = document.createElement('style');
+        styleEl.id = 'bloomly-undistractable-critical';
+        styleEl.textContent = `
+            /* Critical: Force Dealers' Den to match other menu items exactly */
+            ${DEALERS_DEN_SELECTOR} {
+                all: initial !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+                padding: 8px 12px !important;
+                border-radius: 8px !important;
+                color: var(--text-primary, #fff) !important;
+                text-decoration: none !important;
+                font: inherit !important;
+                background: transparent !important;
+                border: none !important;
+                cursor: pointer !important;
+                transition: background-color 0.15s ease, color 0.15s ease !important;
+                box-sizing: border-box !important;
+                line-height: 1.4 !important;
+            }
+
+            ${DEALERS_DEN_SELECTOR}:hover {
+                background-color: var(--hover-bg, rgba(255,255,255,0.1)) !important;
+                color: var(--text-primary, #fff) !important;
+            }
+
+            ${DEALERS_DEN_SELECTOR}:focus-visible {
+                outline: 2px solid var(--focus-color, #5865f2) !important;
+                outline-offset: 2px !important;
+            }
+
+            ${DEALERS_DEN_SELECTOR}:active {
+                background-color: var(--active-bg, rgba(255,255,255,0.15)) !important;
+            }
+
+            /* Active/Current state - highest specificity */
+            ${DEALERS_DEN_SELECTOR}.active,
+            ${DEALERS_DEN_SELECTOR}.current,
+            ${DEALERS_DEN_SELECTOR}.selected,
+            ${DEALERS_DEN_SELECTOR}.router-link-active,
+            ${DEALERS_DEN_SELECTOR}.router-link-exact-active,
+            ${DEALERS_DEN_SELECTOR}.nuxt-link-active,
+            ${DEALERS_DEN_SELECTOR}.nuxt-link-exact-active,
+            ${DEALERS_DEN_SELECTOR}.is-active,
+            ${DEALERS_DEN_SELECTOR}[aria-current="page"],
+            ${DEALERS_DEN_SELECTOR}[data-active="true"] {
+                background-color: var(--active-bg, rgba(88, 101, 242, 0.2)) !important;
+                color: var(--active-color, #5865f2) !important;
+                font-weight: 600 !important;
+            }
+
+            /* Icon normalization */
+            ${DEALERS_DEN_SELECTOR} img,
+            ${DEALERS_DEN_SELECTOR} svg,
+            ${DEALERS_DEN_SELECTOR} i,
+            ${DEALERS_DEN_SELECTOR} [class*="icon"] {
+                width: 20px !important;
+                height: 20px !important;
+                flex-shrink: 0 !important;
+                filter: none !important;
+                opacity: 1 !important;
+                color: inherit !important;
+            }
+
+            /* Icon on hover/active */
+            ${DEALERS_DEN_SELECTOR}:hover img,
+            ${DEALERS_DEN_SELECTOR}:hover svg,
+            ${DEALERS_DEN_SELECTOR}:hover i,
+            ${DEALERS_DEN_SELECTOR}:hover [class*="icon"],
+            ${DEALERS_DEN_SELECTOR}.active img,
+            ${DEALERS_DEN_SELECTOR}.active svg,
+            ${DEALERS_DEN_SELECTOR}.active i,
+            ${DEALERS_DEN_SELECTOR}.active [class*="icon"] {
+                filter: none !important;
+                opacity: 1 !important;
+                color: inherit !important;
+            }
+        `;
+        document.head.appendChild(styleEl);
+        styleInjected = true;
+    }
+
     function syncClasses(dealersDen, reference) {
-        // Get all classes from reference
         const refClasses = new Set(reference.classList);
         const ddClasses = new Set(dealersDen.classList);
 
-        // 1. Add all reference classes that Dealers' Den doesn't have
+        // Add all reference classes (except blacklisted)
         for (const cls of refClasses) {
             if (!ddClasses.has(cls) && !isBlacklistedClass(cls)) {
                 dealersDen.classList.add(cls);
             }
         }
 
-        // 2. Remove blacklisted classes
+        // Remove blacklisted classes
         for (const cls of ddClasses) {
             if (isBlacklistedClass(cls)) {
                 dealersDen.classList.remove(cls);
             }
         }
 
-        // 3. Sync active state: if reference has active class, ensure Dealers' Den has it too
+        // Force active classes if reference has them
         const refActiveClasses = Array.from(refClasses).filter(isActiveClass);
         for (const cls of refActiveClasses) {
             if (!dealersDen.classList.contains(cls)) {
@@ -106,15 +195,19 @@
             }
         }
 
-        // 4. If we're on /dealers-den page, force active classes
+        // Force active on current page
         if (location.pathname === '/dealers-den' || location.pathname.startsWith('/dealers-den/')) {
             for (const cls of refActiveClasses) {
                 dealersDen.classList.add(cls);
             }
-            // Also add common active patterns
             ACTIVE_CLASS_PATTERNS.forEach(pattern => {
                 dealersDen.classList.add(pattern);
             });
+            dealersDen.setAttribute('aria-current', 'page');
+            dealersDen.setAttribute('data-active', 'true');
+        } else {
+            dealersDen.removeAttribute('aria-current');
+            dealersDen.removeAttribute('data-active');
         }
     }
 
@@ -177,81 +270,17 @@
         }
     }
 
-    function injectFallbackHoverStyles() {
-        // Fallback CSS injection for cases where class syncing isn't enough
-        let styleEl = document.getElementById('bloomly-undistractable-fallback');
-        if (!styleEl) {
-            styleEl = document.createElement('style');
-            styleEl.id = 'bloomly-undistractable-fallback';
-            document.head.appendChild(styleEl);
-        }
-
-        const css = `
-            /* Force Dealers' Den to behave like standard nav links */
-            ${DEALERS_DEN_SELECTOR} {
-                all: unset !important;
-                display: flex !important;
-                align-items: center !important;
-                gap: 8px !important;
-                padding: 8px 12px !important;
-                border-radius: 8px !important;
-                color: inherit !important;
-                text-decoration: none !important;
-                font: inherit !important;
-                background: transparent !important;
-                border: none !important;
-                cursor: pointer !important;
-                transition: background-color 0.15s ease, color 0.15s ease !important;
-            }
-
-            ${DEALERS_DEN_SELECTOR}:hover {
-                background-color: var(--hover-bg, rgba(255,255,255,0.08)) !important;
-            }
-
-            ${DEALERS_DEN_SELECTOR}:focus-visible {
-                outline: 2px solid var(--focus-color, #5865f2) !important;
-                outline-offset: 2px !important;
-            }
-
-            ${DEALERS_DEN_SELECTOR}.active,
-            ${DEALERS_DEN_SELECTOR}.current,
-            ${DEALERS_DEN_SELECTOR}.selected,
-            ${DEALERS_DEN_SELECTOR}.router-link-active,
-            ${DEALERS_DEN_SELECTOR}.router-link-exact-active,
-            ${DEALERS_DEN_SELECTOR}.nuxt-link-active,
-            ${DEALERS_DEN_SELECTOR}.nuxt-link-exact-active,
-            ${DEALERS_DEN_SELECTOR}.is-active,
-            ${DEALERS_DEN_SELECTOR}[aria-current="page"] {
-                background-color: var(--active-bg, rgba(88, 101, 242, 0.15)) !important;
-                color: var(--active-color, #5865f2) !important;
-                font-weight: 600 !important;
-            }
-
-            ${DEALERS_DEN_SELECTOR} img,
-            ${DEALERS_DEN_SELECTOR} svg,
-            ${DEALERS_DEN_SELECTOR} i,
-            ${DEALERS_DEN_SELECTOR} [class*="icon"] {
-                width: 20px !important;
-                height: 20px !important;
-                flex-shrink: 0 !important;
-                filter: none !important;
-                opacity: 1 !important;
-            }
-        `;
-
-        if (styleEl.textContent !== css.trim()) {
-            styleEl.textContent = css;
-        }
-    }
-
     function normalizeDealersDen() {
         const dealersDen = document.querySelector(DEALERS_DEN_SELECTOR);
         if (!dealersDen) return false;
 
+        // Inject critical CSS immediately
+        injectCriticalStyles();
+
         const reference = getReferenceElement();
         if (!reference) return false;
 
-        // Sync classes (handles hover via CSS, active via JS)
+        // Sync classes (handles active state via CSS selectors)
         syncClasses(dealersDen, reference);
         syncIconClasses(dealersDen, reference);
 
@@ -259,35 +288,46 @@
         applyInlineStyles(dealersDen, reference);
         applyIconStyles(dealersDen, reference);
 
-        // Inject fallback styles
-        injectFallbackHoverStyles();
-
         return true;
     }
 
-    // Initial normalization
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', normalizeDealersDen);
-    } else {
+    // Aggressive re-normalization to catch router overrides
+    function forceNormalize() {
         normalizeDealersDen();
+        // Double-check after a tick
+        requestAnimationFrame(normalizeDealersDen);
+        // Triple-check after router settles
+        setTimeout(normalizeDealersDen, 50);
+        setTimeout(normalizeDealersDen, 200);
     }
 
-    // Observe for class/style changes on reference elements to sync active state
+    // Initial
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', forceNormalize);
+    } else {
+        forceNormalize();
+    }
+
+    // Watch for class changes on ALL nav links to sync active state instantly
     const classObserver = new MutationObserver((mutations) => {
+        let shouldSync = false;
         for (const mutation of mutations) {
             if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
                 const target = mutation.target;
-                if (target.matches && REFERENCE_SELECTORS.some(s => target.matches(s))) {
-                    normalizeDealersDen();
+                // If any nav link changes class, re-sync
+                if (target.matches && target.matches('nav a[href^="/"], aside a[href^="/"]')) {
+                    shouldSync = true;
                     break;
                 }
             }
         }
+        if (shouldSync) {
+            forceNormalize();
+        }
     });
 
-    // Start observing once we have reference elements
     function startClassObserver() {
-        const refs = REFERENCE_SELECTORS.flatMap(s => Array.from(document.querySelectorAll(s)));
+        const refs = document.querySelectorAll('nav a[href^="/"], aside a[href^="/"]');
         refs.forEach(el => {
             if (el.offsetParent !== null) {
                 classObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
@@ -301,7 +341,7 @@
         startClassObserver();
     }
 
-    // Observe for dynamic changes (SPA navigation, etc.)
+    // Observe DOM changes
     const observer = new MutationObserver((mutations) => {
         let shouldCheck = false;
         for (const mutation of mutations) {
@@ -313,12 +353,9 @@
                         } else if (node.querySelector && node.querySelector(DEALERS_DEN_SELECTOR)) {
                             shouldCheck = true;
                         }
-                        for (const selector of REFERENCE_SELECTORS) {
-                            if (node.matches && node.matches(selector)) {
-                                shouldCheck = true;
-                                // Start observing new reference elements
-                                classObserver.observe(node, { attributes: true, attributeFilter: ['class'] });
-                            }
+                        if (node.matches && node.matches('nav a[href^="/"], aside a[href^="/"]')) {
+                            shouldCheck = true;
+                            classObserver.observe(node, { attributes: true, attributeFilter: ['class'] });
                         }
                     }
                 }
@@ -329,9 +366,7 @@
             }
         }
         if (shouldCheck) {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(normalizeDealersDen);
-            });
+            forceNormalize();
         }
     });
 
@@ -342,16 +377,21 @@
         attributeFilter: ['style', 'class', 'href']
     });
 
-    // Run on navigation (for SPA)
+    // Navigation detection - run immediately on URL change
     let lastUrl = location.href;
     new MutationObserver(() => {
         const url = location.href;
         if (url !== lastUrl) {
             lastUrl = url;
-            setTimeout(normalizeDealersDen, 50);
+            lastPathname = location.pathname;
+            forceNormalize();
         }
     }).observe(document, { subtree: true, childList: true });
 
-    // Periodic check as fallback
-    setInterval(normalizeDealersDen, 2000);
+    // Also listen for popstate/hashchange
+    window.addEventListener('popstate', forceNormalize);
+    window.addEventListener('hashchange', forceNormalize);
+
+    // Periodic aggressive check
+    setInterval(forceNormalize, 1000);
 })();
