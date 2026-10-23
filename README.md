@@ -11,6 +11,10 @@ Visited links are purple, not visited are blue. And nothing else. In case all yo
 ### - 🗑 Add remove from WL button | [GITHUB](https://github.com/lynrayy/YT-RM-BTN)
 Adds trash button to videos in watch later playlist. Now you can easily cleanup this nasty playlist
 
+## Bloomly.fun
+### - 👁‍🗨 Remove distractions | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/BloomlyUndistractable.user.js)
+Disable distractable styles on bloomly
+
 ### - ⛓️‍💥 Video Feed Filter | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/YoutubeFeedFilter.user.js) 
 Adds filter button. You can hide from main/subscription/recomendation feed videos that:
 - Too long or too short
