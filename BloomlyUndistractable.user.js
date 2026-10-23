@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bloomly Undistractable
 // @namespace    http://tampermonkey.net/
-// @version      1.9
+// @version      1.8
 // @description  Normalize "Dealers' Den" menu button style to match other menu items
 // @author       Lynrayy
 // @match        https://bloomly.fun/*
@@ -16,7 +16,19 @@
     'use strict';
 
     const DEALERS_DEN_SELECTOR = 'a[href="/dealers-den"]';
-    const NAV_LINK_SELECTORS = 'nav a[href^="/"], aside a[href^="/"]';
+    const REFERENCE_SELECTORS = [
+        'aside a[href="/shop"]',       // Магазин in Categories (same section)
+        'aside a[href="/scheduled-posts"]', // Черновики и отложенные (same section)
+        'nav a[href="/"]',             // Главная
+        'nav a[href="/explore"]',      // Интересное
+        'nav a[href="/notifications"]', // Уведомления
+        'nav a[href="/messages"]',     // Сообщения
+        'nav a[href="/friends"]',      // Друзья
+        'nav a[href="/groups"]',       // Группы
+        'nav a[href="/bookmarks"]',    // Закладки
+        'nav a[href="/subscriptions"]', // Premium
+        'nav a[href="/settings/profile"]', // Настройки
+    ];
 
     const ACTIVE_CLASS_PATTERNS = [
         'active', 'current', 'selected', 'router-link-active',
@@ -29,37 +41,26 @@
         'unique', 'cta', 'primary', 'accent', 'brand', 'custom'
     ];
 
-    // All CSS properties to copy for pixel-perfect match
-    const ALL_STYLE_PROPS = [
-        'fontSize', 'fontWeight', 'fontFamily', 'fontStyle', 'fontVariant', 'fontStretch', 'lineHeight', 'letterSpacing', 'textTransform', 'textDecoration', 'textDecorationColor', 'textDecorationLine', 'textDecorationStyle', 'textDecorationThickness', 'textUnderlineOffset', 'wordSpacing', 'color', 'direction', 'unicodeBidi', 'whiteSpace', 'wordBreak', 'overflowWrap', 'tabSize', 'hyphens', 'textAlign', 'textAlignLast', 'textIndent', 'textJustify', 'textShadow', 'textOverflow',
+    const STYLES_TO_COPY = [
+        'fontSize', 'fontWeight', 'fontFamily', 'lineHeight',
+        'color', 'textDecoration', 'letterSpacing', 'textTransform',
         'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
         'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
-        'borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius',
-        'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+        'borderRadius', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
         'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
         'borderTopStyle', 'borderRightStyle', 'borderBottomStyle', 'borderLeftStyle',
-        'backgroundColor', 'backgroundImage', 'backgroundRepeat', 'backgroundPosition', 'backgroundSize', 'backgroundAttachment', 'backgroundOrigin', 'backgroundClip',
-        'gap', 'alignItems', 'justifyContent', 'alignContent', 'alignSelf', 'justifyItems', 'justifySelf', 'placeItems', 'placeContent', 'placeSelf',
-        'display', 'flexDirection', 'flexWrap', 'flexFlow', 'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'order',
-        'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'boxSizing',
-        'transition', 'transitionProperty', 'transitionDuration', 'transitionTimingFunction', 'transitionDelay',
-        'boxShadow', 'opacity', 'filter', 'transform', 'transformOrigin', 'willChange',
-        'cursor', 'pointerEvents', 'userSelect'
+        'backgroundColor', 'backgroundImage', 'backgroundRepeat', 'backgroundPosition', 'backgroundSize',
+        'gap', 'alignItems', 'justifyContent',
+        'transition', 'transitionDuration', 'transitionTimingFunction', 'transitionProperty',
+        'boxShadow'
     ];
 
-    const ICON_STYLE_PROPS = [
-        'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight',
-        'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
-        'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-        'borderRadius', 'opacity', 'filter', 'color', 'backgroundColor', 'background',
-        'boxShadow', 'transform', 'transition', 'flexShrink', 'flexGrow', 'flexBasis',
-        'display', 'verticalAlign', 'objectFit', 'objectPosition'
+    // Icon styles - EXCLUDE width/height to keep natural size
+    const ICON_STYLES_TO_COPY = [
+        'margin', 'padding', 'borderRadius',
+        'opacity', 'filter', 'color', 'backgroundColor', 'background',
+        'boxShadow', 'transform', 'transition', 'flexShrink'
     ];
-
-    let cachedActiveStyles = null;
-    let cachedActiveClasses = null;
-    let cachedIconStyles = null;
-    let cachedIconClasses = null;
 
     function isActiveElement(el) {
         if (el.getAttribute('aria-current') === 'page') return true;
@@ -75,74 +76,54 @@
         return BLACKLISTED_CLASS_PATTERNS.some(p => lower.includes(p));
     }
 
-    function getAllNavLinks() {
-        return document.querySelectorAll(NAV_LINK_SELECTORS);
-    }
-
-    function findActiveReference(excludeSelector = null) {
-        const links = getAllNavLinks();
-        for (const el of links) {
-            if (excludeSelector && el.matches(excludeSelector)) continue;
-            if (el.offsetParent !== null && isActiveElement(el)) {
-                return el;
+    function getReferenceElement(preferActive = false) {
+        // First try to find an active element (not Dealers' Den)
+        if (preferActive) {
+            for (const selector of REFERENCE_SELECTORS) {
+                const el = document.querySelector(selector);
+                if (el && el.offsetParent !== null && isActiveElement(el)) return el;
             }
-        }
-        return null;
-    }
-
-    function findAnyVisibleReference(excludeSelector = null) {
-        const links = getAllNavLinks();
-        for (const el of links) {
-            if (excludeSelector && el.matches(excludeSelector)) continue;
-            if (el.offsetParent !== null) return el;
-        }
-        return null;
-    }
-
-    function captureActiveProfile() {
-        const activeEl = findActiveReference(DEALERS_DEN_SELECTOR);
-        if (!activeEl) return false;
-
-        const refStyles = getComputedStyle(activeEl);
-        cachedActiveStyles = {};
-        for (const prop of ALL_STYLE_PROPS) {
-            const val = refStyles[prop];
-            if (val && val !== 'initial' && val !== 'inherit' && val !== 'unset') {
-                cachedActiveStyles[prop] = val;
-            }
-        }
-        cachedActiveClasses = Array.from(activeEl.classList).filter(c => !isBlacklistedClass(c));
-
-        // Capture icon
-        const activeIcon = activeEl.querySelector('img, svg, i, [class*="icon"]');
-        if (activeIcon) {
-            const iconStyles = getComputedStyle(activeIcon);
-            cachedIconStyles = {};
-            for (const prop of ICON_STYLE_PROPS) {
-                const val = iconStyles[prop];
-                if (val && val !== 'initial' && val !== 'inherit' && val !== 'unset') {
-                    cachedIconStyles[prop] = val;
+            // Fallback: any visible active nav/aside link
+            const allLinks = document.querySelectorAll('nav a[href^="/"], aside a[href^="/"]');
+            for (const el of allLinks) {
+                if (el.offsetParent !== null && !el.href.includes('/dealers-den') && isActiveElement(el)) {
+                    return el;
                 }
             }
-            cachedIconClasses = Array.from(activeIcon.classList).filter(c => !isBlacklistedClass(c));
         }
-        return true;
+        // Default: first visible reference
+        for (const selector of REFERENCE_SELECTORS) {
+            const el = document.querySelector(selector);
+            if (el && el.offsetParent !== null) return el;
+        }
+        const fallbacks = document.querySelectorAll('nav a[href^="/"], aside a[href^="/"]');
+        for (const el of fallbacks) {
+            if (el.offsetParent !== null && !el.href.includes('/dealers-den')) return el;
+        }
+        return null;
     }
 
-    function applyStyles(target, styles) {
-        for (const [prop, val] of Object.entries(styles)) {
-            target.style.setProperty(prop, val, 'important');
+    function copyStyles(target, source, properties) {
+        const srcStyles = getComputedStyle(source);
+        const tgtStyles = getComputedStyle(target);
+        for (const prop of properties) {
+            const val = srcStyles[prop];
+            if (val && val !== tgtStyles[prop] && val !== 'initial' && val !== 'inherit' && val !== 'unset') {
+                target.style.setProperty(prop, val, 'important');
+            }
         }
     }
 
-    function syncClasses(target, classes) {
+    function syncClasses(target, source) {
         // Remove blacklisted
         for (const cls of target.classList) {
             if (isBlacklistedClass(cls)) target.classList.remove(cls);
         }
-        // Add target classes
-        for (const cls of classes) {
-            if (!target.classList.contains(cls)) target.classList.add(cls);
+        // Add source classes
+        for (const cls of source.classList) {
+            if (!isBlacklistedClass(cls) && !target.classList.contains(cls)) {
+                target.classList.add(cls);
+            }
         }
     }
 
@@ -150,81 +131,42 @@
         const dealersDen = document.querySelector(DEALERS_DEN_SELECTOR);
         if (!dealersDen) return;
 
+        // Determine if Dealers' Den should be active
         const isDealersDenActive = location.pathname === '/dealers-den' || location.pathname.startsWith('/dealers-den/');
 
-        // Always try to capture active profile from current page (for future use)
-        if (!isDealersDenActive) {
-            captureActiveProfile();
-        }
+        // Get reference: active element if Dealers' Den is active, otherwise default
+        const reference = getReferenceElement(isDealersDenActive);
+        if (!reference) return;
 
-        // Get a reference for base (non-active) styles
-        const baseRef = findAnyVisibleReference(DEALERS_DEN_SELECTOR);
-        if (baseRef) {
-            // Sync base classes
-            const baseClasses = Array.from(baseRef.classList).filter(c => !isBlacklistedClass(c));
-            syncClasses(dealersDen, baseClasses);
+        // Sync classes (this gives us hover/active CSS from site's stylesheet)
+        syncClasses(dealersDen, reference);
 
-            // Copy base styles
-            const baseStyles = getComputedStyle(baseRef);
-            for (const prop of ALL_STYLE_PROPS) {
-                const val = baseStyles[prop];
-                if (val && val !== 'initial' && val !== 'inherit' && val !== 'unset') {
-                    dealersDen.style.setProperty(prop, val, 'important');
-                }
-            }
+        // Copy computed styles from reference
+        copyStyles(dealersDen, reference, STYLES_TO_COPY);
 
-            // Sync base icon
-            const baseIcon = baseRef.querySelector('img, svg, i, [class*="icon"]');
-            const ddIcon = dealersDen.querySelector('img, svg, i, [class*="icon"]');
-            if (baseIcon && ddIcon) {
-                syncClasses(ddIcon, Array.from(baseIcon.classList).filter(c => !isBlacklistedClass(c)));
-                const baseIconStyles = getComputedStyle(baseIcon);
-                for (const prop of ICON_STYLE_PROPS) {
-                    const val = baseIconStyles[prop];
-                    if (val && val !== 'initial' && val !== 'inherit' && val !== 'unset') {
-                        ddIcon.style.setProperty(prop, val, 'important');
-                    }
-                }
+        // Sync icon - NO width/height copying
+        const ddImg = dealersDen.querySelector('img, svg, i, [class*="icon"]');
+        const refImg = reference.querySelector('img, svg, i, [class*="icon"]');
+        if (ddImg && refImg) {
+            syncClasses(ddImg, refImg);
+            copyStyles(ddImg, refImg, ICON_STYLES_TO_COPY);
+            const refImgStyles = getComputedStyle(refImg);
+            if (!refImgStyles.filter || refImgStyles.filter === 'none') {
+                ddImg.style.setProperty('filter', 'none', 'important');
             }
         }
 
-        // If Dealers' Den should be active, apply cached active profile
+        // Set aria-current for CSS targeting
         if (isDealersDenActive) {
-            if (cachedActiveStyles) {
-                applyStyles(dealersDen, cachedActiveStyles);
-            }
-            if (cachedActiveClasses) {
-                for (const cls of cachedActiveClasses) {
-                    if (!dealersDen.classList.contains(cls)) dealersDen.classList.add(cls);
-                }
-            }
             dealersDen.setAttribute('aria-current', 'page');
-
-            // Apply cached active icon styles
-            const ddIcon = dealersDen.querySelector('img, svg, i, [class*="icon"]');
-            if (ddIcon && cachedIconStyles) {
-                applyStyles(ddIcon, cachedIconStyles);
-            }
-            if (ddIcon && cachedIconClasses) {
-                for (const cls of cachedIconClasses) {
-                    if (!ddIcon.classList.contains(cls)) ddIcon.classList.add(cls);
-                }
-            }
         } else {
             dealersDen.removeAttribute('aria-current');
         }
 
-        // Ensure icon filter is clean
-        const ddIcon = dealersDen.querySelector('img, svg, i, [class*="icon"]');
-        if (ddIcon) {
-            ddIcon.style.setProperty('filter', 'none', 'important');
-            ddIcon.style.setProperty('opacity', '1', 'important');
-        }
-
-        injectCSS();
+        injectMinimalCSS();
     }
 
-    function injectCSS() {
+    function injectMinimalCSS() {
         if (document.getElementById('bloomly-undistractable')) return;
         const style = document.createElement('style');
         style.id = 'bloomly-undistractable';
@@ -235,6 +177,19 @@
             ${DEALERS_DEN_SELECTOR}:focus-visible {
                 outline: 2px solid var(--focus-color, #5865f2) !important;
                 outline-offset: 2px !important;
+            }
+            ${DEALERS_DEN_SELECTOR}[aria-current="page"],
+            ${DEALERS_DEN_SELECTOR}.active,
+            ${DEALERS_DEN_SELECTOR}.current,
+            ${DEALERS_DEN_SELECTOR}.selected,
+            ${DEALERS_DEN_SELECTOR}.router-link-active,
+            ${DEALERS_DEN_SELECTOR}.router-link-exact-active,
+            ${DEALERS_DEN_SELECTOR}.nuxt-link-active,
+            ${DEALERS_DEN_SELECTOR}.nuxt-link-exact-active,
+            ${DEALERS_DEN_SELECTOR}.is-active {
+                background-color: var(--active-bg, rgba(88, 101, 242, 0.18)) !important;
+                color: var(--active-color, #5865f2) !important;
+                font-weight: 600 !important;
             }
             ${DEALERS_DEN_SELECTOR} img,
             ${DEALERS_DEN_SELECTOR} svg,
