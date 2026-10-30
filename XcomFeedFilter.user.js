@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.0.18
+// @version      1.0.21
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.0.18';
+    const SCRIPT_VERSION = '1.0.21';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
 
     const RECENCY_UNITS = {
@@ -47,7 +47,7 @@
         recencyEnabled: false,
         hideVerified: false,
         hideVerifiedReplies: false,
-        hideVerifiedRemoveDom: false,
+        hideVerifiedNotInterested: false,
         hidePremium: false,
         hideWhatsHappening: false,
         hideWhoToFollow: false,
@@ -129,7 +129,7 @@
       recencyEnabled: Boolean(value.recencyEnabled),
       hideVerified: Boolean(value.hideVerified),
       hideVerifiedReplies: Boolean(value.hideVerifiedReplies),
-      hideVerifiedRemoveDom: Boolean(value.hideVerifiedRemoveDom),
+      hideVerifiedNotInterested: Boolean(value.hideVerifiedNotInterested),
       hidePremium: Boolean(value.hidePremium),
       hideWhatsHappening: Boolean(value.hideWhatsHappening),
       hideWhoToFollow: Boolean(value.hideWhoToFollow),
@@ -263,15 +263,18 @@
 
     const tabBar = makeElement('div', 'xff-tabs');
     const tabRecency = makeButton('xff-tab xff-tab-recency', 'Новизна');
-    const tabOther = makeButton('xff-tab xff-tab-other', 'Другое');
+    const tabOther = makeButton('xff-tab xff-tab-other', 'Посты');
     const tabIrritants = makeButton('xff-tab xff-tab-irritants', 'Раздражители');
-    tabBar.append(tabRecency, tabOther, tabIrritants);
+    const tabDb = makeButton('xff-tab xff-tab-db', 'БД');
+    tabBar.append(tabRecency, tabOther, tabIrritants, tabDb);
 
     const recencyTab = makeElement('div', 'xff-tab-panel xff-recency-tab');
     const otherTab = makeElement('div', 'xff-tab-panel xff-other-tab');
     const irritantsTab = makeElement('div', 'xff-tab-panel xff-irritants-tab');
+    const dbTab = makeElement('div', 'xff-tab-panel xff-db-tab');
     otherTab.hidden = true;
     irritantsTab.hidden = true;
+    dbTab.hidden = true;
 
     const recencySwitch = makeElement('label', 'xff-switch');
     const recencyEnabled = makeElement('input', 'xff-recency-enabled');
@@ -305,10 +308,10 @@
     hideVerifiedReplies.type = 'checkbox';
     hideVerifiedRepliesSwitch.append(hideVerifiedReplies, makeElement('span', '', 'Также скрывать ответы на их посты'));
 
-    const hideVerifiedRemoveDomSwitch = makeElement('label', 'xff-switch xff-switch-child');
-    const hideVerifiedRemoveDom = makeElement('input', 'xff-hide-verified-remove-dom');
-    hideVerifiedRemoveDom.type = 'checkbox';
-    hideVerifiedRemoveDomSwitch.append(hideVerifiedRemoveDom, makeElement('span', 'xff-remove-dom-label', 'Вырезать из DOM'));
+    const hideVerifiedNotInterestedSwitch = makeElement('label', 'xff-switch xff-switch-child');
+    const hideVerifiedNotInterested = makeElement('input', 'xff-hide-verified-not-interested');
+    hideVerifiedNotInterested.type = 'checkbox';
+    hideVerifiedNotInterestedSwitch.append(hideVerifiedNotInterested, makeElement('span', '', 'Прожимать "Не интересно"'));
 
     const hidePremiumSwitch = makeElement('label', 'xff-switch');
     const hidePremium = makeElement('input', 'xff-hide-premium');
@@ -349,12 +352,25 @@
     nameFilterIncludeReplies.type = 'checkbox';
     nameFilterIncludeRepliesSwitch.append(nameFilterIncludeReplies, makeElement('span', '', 'Также учитывать ответы'));
 
-    otherTab.append(hideVerifiedSwitch, hideVerifiedRepliesSwitch, hideVerifiedRemoveDomSwitch, nameFilterSwitch, nameFilterKeywordsField, nameFilterNotInterestedSwitch, nameFilterIncludeRepliesSwitch);
+    otherTab.append(hideVerifiedSwitch, hideVerifiedRepliesSwitch, hideVerifiedNotInterestedSwitch, nameFilterSwitch, nameFilterKeywordsField, nameFilterNotInterestedSwitch, nameFilterIncludeRepliesSwitch);
     irritantsTab.append(hidePremiumSwitch, hideWhatsHappeningSwitch, hideWhoToFollowSwitch);
 
     const status = makeElement('div', 'xff-status');
 
-    panel.append(topRow, tabBar, recencyTab, otherTab, irritantsTab, status);
+    const dbTable = makeElement('table', 'xff-db-table');
+    const dbThead = makeElement('thead');
+    const dbTrHead = makeElement('tr');
+    const dbThNick = makeElement('th', 'xff-db-th-nick', 'Ник');
+    const dbThAction = makeElement('th', 'xff-db-th-action', 'Действие');
+    const dbTbody = makeElement('tbody', 'xff-db-tbody');
+    dbTrHead.append(dbThNick, dbThAction);
+    dbThead.append(dbTrHead);
+    dbTable.append(dbThead, dbTbody);
+
+    const dbEmpty = makeElement('div', 'xff-db-empty', 'Пусто. Список пользователей будет заполнен позже.');
+    dbTab.append(dbTable, dbEmpty);
+
+    panel.append(topRow, tabBar, recencyTab, otherTab, irritantsTab, dbTab, status);
     host.append(button, panel);
     applyBaseUiStyles(host, button, panel);
     document.body.appendChild(host);
@@ -373,13 +389,15 @@
       tabRecency,
       tabOther,
       tabIrritants,
+      tabDb,
       recencyTab,
       otherTab,
       irritantsTab,
+      dbTab,
       recencyEnabled,
       hideVerified,
       hideVerifiedReplies,
-      hideVerifiedRemoveDom,
+      hideVerifiedNotInterested,
       hidePremium,
       hideWhatsHappening,
       hideWhoToFollow,
@@ -400,6 +418,7 @@
     ui.tabRecency.addEventListener('click', () => setTab('recency'));
     ui.tabOther.addEventListener('click', () => setTab('other'));
     ui.tabIrritants.addEventListener('click', () => setTab('irritants'));
+    ui.tabDb.addEventListener('click', () => setTab('db'));
 
     ui.recencyEnabled.addEventListener('change', () => {
       settings.recencyEnabled = ui.recencyEnabled.checked;
@@ -423,8 +442,8 @@
       scheduleScan();
     });
 
-    ui.hideVerifiedRemoveDom.addEventListener('change', () => {
-      settings.hideVerifiedRemoveDom = ui.hideVerifiedRemoveDom.checked;
+    ui.hideVerifiedNotInterested.addEventListener('change', () => {
+      settings.hideVerifiedNotInterested = ui.hideVerifiedNotInterested.checked;
       saveSettings();
       renderUi();
       scheduleScan();
@@ -752,10 +771,6 @@
         cursor: not-allowed !important;
       }
 
-      #xff-root .xff-remove-dom-label {
-        color: #ff4444 !important;
-      }
-
       #xff-root .xff-recency-field {
         display: grid !important;
         gap: 5px !important;
@@ -871,6 +886,34 @@
         box-shadow: 0 0 0 3px var(--xff-accent-soft) !important;
       }
 
+      #xff-root .xff-db-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin-top: 12px !important;
+      }
+
+      #xff-root .xff-db-table th,
+      #xff-root .xff-db-table td {
+        border: 1px solid var(--xff-border) !important;
+        padding: 6px 8px !important;
+        text-align: left !important;
+        font-size: 12px !important;
+        color: var(--xff-text) !important;
+        background: var(--xff-bg) !important;
+      }
+
+      #xff-root .xff-db-table th {
+        font-weight: 700 !important;
+        background: var(--xff-accent-soft) !important;
+      }
+
+      #xff-root .xff-db-empty {
+        margin-top: 12px !important;
+        color: var(--xff-muted) !important;
+        font-size: 12px !important;
+        font-style: italic !important;
+      }
+
       @media (max-width: 520px) {
         #xff-root {
           right: 74px !important;
@@ -976,8 +1019,8 @@
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл вырезание из DOM постов от галочников', () => {
-      settings.hideVerifiedRemoveDom = !settings.hideVerifiedRemoveDom;
+    GM_registerMenuCommand('Вкл/выкл прожимать "Не интересно" для постов от галочников', () => {
+      settings.hideVerifiedNotInterested = !settings.hideVerifiedNotInterested;
       saveSettings();
       renderUi();
       scheduleScan();
@@ -1105,7 +1148,12 @@
       let hide = false;
 
       if (settings.hideVerified && isVerifiedPost(post)) {
-        hide = true;
+        if (settings.hideVerifiedNotInterested) {
+          clickNotInterested(post);
+          notInterestedCount++;
+        } else {
+          hide = true;
+        }
       }
 
       if (!hide && settings.nameFilterEnabled && isNameFiltered(post, settings.nameFilterIncludeReplies)) {
@@ -1130,13 +1178,7 @@
 
       if (hide) {
         const wrapper = getPostWrapper(post);
-        if (settings.hideVerifiedRemoveDom && settings.hideVerified && isVerifiedPost(post)) {
-          const scrollY = window.scrollY;
-          wrapper.remove();
-          window.scrollTo(0, scrollY);
-        } else {
-          wrapper.setAttribute('data-xff-hidden', 'true');
-        }
+        wrapper.setAttribute('data-xff-hidden', 'true');
         hiddenCount++;
       } else if (!settings.nameFilterNotInterested || !isNameFiltered(post, settings.nameFilterIncludeReplies)) {
         const wrapper = getPostWrapper(post);
@@ -1368,7 +1410,7 @@
   }
 
   function setTab(tab) {
-    settings.tab = ['recency', 'other', 'irritants'].includes(tab) ? tab : 'recency';
+    settings.tab = ['recency', 'other', 'irritants', 'db'].includes(tab) ? tab : 'recency';
     saveSettings();
     renderUi();
   }
@@ -1434,16 +1476,18 @@
     ui.tabRecency.setAttribute('aria-selected', String(settings.tab === 'recency'));
     ui.tabOther.setAttribute('aria-selected', String(settings.tab === 'other'));
     ui.tabIrritants.setAttribute('aria-selected', String(settings.tab === 'irritants'));
+    ui.tabDb.setAttribute('aria-selected', String(settings.tab === 'db'));
     ui.recencyTab.hidden = settings.tab !== 'recency';
     ui.otherTab.hidden = settings.tab !== 'other';
     ui.irritantsTab.hidden = settings.tab !== 'irritants';
+    ui.dbTab.hidden = settings.tab !== 'db';
 
     ui.recencyEnabled.checked = settings.recencyEnabled;
     ui.hideVerified.checked = settings.hideVerified;
     ui.hideVerifiedReplies.checked = settings.hideVerifiedReplies;
     ui.hideVerifiedReplies.disabled = !settings.hideVerified;
-    ui.hideVerifiedRemoveDom.checked = settings.hideVerifiedRemoveDom;
-    ui.hideVerifiedRemoveDom.disabled = !settings.hideVerified;
+    ui.hideVerifiedNotInterested.checked = settings.hideVerifiedNotInterested;
+    ui.hideVerifiedNotInterested.disabled = !settings.hideVerified;
     ui.hidePremium.checked = settings.hidePremium;
     ui.hideWhatsHappening.checked = settings.hideWhatsHappening;
     ui.hideWhoToFollow.checked = settings.hideWhoToFollow;
@@ -1474,7 +1518,7 @@
     const recencyState = settings.recencyEnabled ? 'вкл' : 'выкл';
     const verifiedState = settings.hideVerified ? 'вкл' : 'выкл';
     const verifiedRepliesState = settings.hideVerifiedReplies ? 'вкл' : 'выкл';
-    const verifiedRemoveDomState = settings.hideVerifiedRemoveDom ? 'вкл' : 'выкл';
+    const verifiedNotInterestedState = settings.hideVerifiedNotInterested ? 'вкл' : 'выкл';
     const premiumState = settings.hidePremium ? 'вкл' : 'выкл';
     const whatsHappeningState = settings.hideWhatsHappening ? 'вкл' : 'выкл';
     const whoToFollowState = settings.hideWhoToFollow ? 'вкл' : 'выкл';
@@ -1482,7 +1526,7 @@
     const notInterestedState = settings.nameFilterNotInterested ? 'вкл' : 'выкл';
     const includeRepliesState = settings.nameFilterIncludeReplies ? 'вкл' : 'выкл';
     ui.status.textContent =
-      `Новизна: ${recencyState}. Галочники: ${verifiedState}. Ответы галочникам: ${verifiedRepliesState}. Вырезать из DOM: ${verifiedRemoveDomState}. Премиум: ${premiumState}. Что происходит: ${whatsHappeningState}. Кого читать: ${whoToFollowState}. Фильтр имён: ${nameFilterState}. Неинтересное: ${notInterestedState}. Ответы: ${includeRepliesState}. ` +
+      `Новизна: ${recencyState}. Галочники: ${verifiedState}. Ответы галочникам: ${verifiedRepliesState}. Прожимать неинтересно: ${verifiedNotInterestedState}. Премиум: ${premiumState}. Что происходит: ${whatsHappeningState}. Кого читать: ${whoToFollowState}. Фильтр имён: ${nameFilterState}. Неинтересное: ${notInterestedState}. Ответы: ${includeRepliesState}. ` +
       `Скрыто: ${hiddenCount}. Прожито "неинтересно": ${notInterestedCount}. Всего постов: ${totalCount}.`;
   }
 
