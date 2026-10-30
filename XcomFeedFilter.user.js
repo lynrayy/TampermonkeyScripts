@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.0.16
+// @version      1.0.17
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -66,7 +66,7 @@
   let settings = loadSettings();
   let scanTimer = 0;
   let scanDebounceTimer = 0;
-  const SCAN_DEBOUNCE_MS = 500;
+  const SCAN_DEBOUNCE_MS = 200;
   let observer = null;
   let ui = null;
   let isDestroyed = false;
@@ -228,7 +228,7 @@
     window.clearTimeout(scanDebounceTimer);
     scanDebounceTimer = window.setTimeout(() => {
       if (!isDestroyed) {
-        scanTimer = window.setTimeout(scanPage, 120);
+        scanTimer = window.setTimeout(scanPage, 100);
       }
     }, SCAN_DEBOUNCE_MS);
   }
