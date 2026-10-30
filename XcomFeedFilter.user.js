@@ -2,6 +2,8 @@
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
 // @version      1.0.16
+// @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
+// @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
 // @author       Lynrayy
 // @match        https://x.com/*
