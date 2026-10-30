@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Feed Filter
 // @namespace    https://github.com/local/youtube-length-filter
-// @version      2.0.24
+// @version      2.0.25
 // @description  Hides YouTube videos outside a configurable duration range and/or outside a recency (publish age) range. Hides jam playlists and shelf sections.
 // @author       Lynrayy
 // @match        https://*.youtube.com/*
@@ -18,7 +18,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '2.0.24';
+    const SCRIPT_VERSION = '2.0.25';
     const STORAGE_KEY = 'yt-length-filter-settings-v1';
   const SLIDER_MAX_SECONDS = 2 * 60 * 60;
   const STORED_MAX_SECONDS = 12 * 60 * 60;
@@ -1212,10 +1212,15 @@
   }
 
   function isHomePage() {
-    // Check if we're on YouTube home page or feed pages where filters should work by default
+    // Filters apply by default only on the YouTube home page
     const path = window.location.pathname;
-    const feedPaths = ['/', '', '/feed', '/feed/subscriptions', '/feed/history', '/feed/playlists', '/feed/watch_later', '/feed/liked'];
-    return feedPaths.some(p => path === p || path.startsWith(p + '/')) || path.startsWith('/feed/');
+    return path === '/' || path === '';
+  }
+
+  function isSubscriptionsPage() {
+    // Filters that are meant for the subscriptions page also work there
+    const path = window.location.pathname;
+    return path === '/feed/subscriptions' || path.startsWith('/feed/subscriptions/');
   }
 
   function isSearchPage() {
@@ -1230,7 +1235,7 @@
 
   function scheduleScan() {
     if (isDestroyed) return;
-    if (!settings.applyEverywhere && (!isHomePage() || isSearchPage())) {
+    if (!settings.applyEverywhere && !isHomePage() && !isSubscriptionsPage()) {
       return;
     }
     window.clearTimeout(scanTimer);
@@ -1336,7 +1341,7 @@
   }
 
   function scanPage() {
-    if (!settings.applyEverywhere && (!isHomePage() || isSearchPage())) {
+    if (!settings.applyEverywhere && !isHomePage() && !isSubscriptionsPage()) {
       return;
     }
     if (isDestroyed) return;
@@ -1416,7 +1421,7 @@
       return true;
     }
 
-    if (settings.shelfEnabled && isShelfItem(container)) {
+    if (settings.shelfEnabled && !isWatchPage() && isShelfItem(container)) {
       return true;
     }
 
