@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.0.15
+// @version      1.0.16
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
 // @author       Lynrayy
 // @match        https://x.com/*
@@ -17,7 +17,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.0.15';
+    const SCRIPT_VERSION = '1.0.16';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
 
     const RECENCY_UNITS = {
@@ -1128,7 +1128,9 @@
       if (hide) {
         const wrapper = getPostWrapper(post);
         if (settings.hideVerifiedRemoveDom && settings.hideVerified && isVerifiedPost(post)) {
+          const scrollY = window.scrollY;
           wrapper.remove();
+          window.scrollTo(0, scrollY);
         } else {
           wrapper.setAttribute('data-xff-hidden', 'true');
         }
