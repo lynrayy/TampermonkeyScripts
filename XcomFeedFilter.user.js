@@ -6,6 +6,7 @@
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
 // @author       Lynrayy
+// @license      MIT
 // @match        https://x.com/*
 // @match        https://twitter.com/*
 // @grant        GM_addStyle
