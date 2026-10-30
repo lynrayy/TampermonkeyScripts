@@ -14,6 +14,13 @@ Adds filter button. You can hide from main/subscription/recomendation feed video
 - Hide "Джем" playlists
 Tested only with russian language but may work on english too
 
+## X.com (Twitter)
+### - ⛓️‍💥 X.com feed filter | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js)
+Adds filter button. You can hide:
+- Posts from authors with blacklisted words/flags
+- Too old/fresh posts
+- Premium ad, What happens, Who to follow blocks
+
 ## Bloomly.fun
 ### - 👁‍🗨 Remove distractions | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/BloomlyUndistractable.user.js)
 Disable distractable styles on bloomly
