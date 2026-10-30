@@ -1,6 +1,12 @@
 # TampermonkeyScripts
 Scripts for tampermonkey.
 For use, install **[Tampermonkey](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)** first!
+
+<p align="right">
+  <a href="README.md"><kbd>🇷🇺 Русский</kbd></a>
+  <a href="README.en.md"><kbd>🇺🇸 English</kbd></a>
+</p>
+
 ## WARNING
 (Russian, translate if needed) 
 Скрипты в первую очередь ориентированы на русские версии сайтов с соответствующей локализацией элементов. Если вы пользуетесь другим языком интерфейса, вам, вероятно, придётся исправлять множество хардкода, на которым держится обнаружение тех или иных элементов интерфейса. Мы живём в эпоху нейросетей, так что, да поможет вам Клод.
