@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.2.1
+// @version      1.2.12
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.2.1';
+    const SCRIPT_VERSION = '1.2.12';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
 
     const RECENCY_UNITS = {
@@ -48,6 +48,7 @@
         hideVerified: false,
         hideVerifiedReplies: false,
         hideVerifiedUseDB: false,
+        hideVerifiedDBOnlyExceptions: false,
         hideVerifiedNotInterested: false,
         hidePremium: false,
         hideWhatsHappening: false,
@@ -132,6 +133,7 @@
       hideVerified: Boolean(value.hideVerified),
       hideVerifiedReplies: Boolean(value.hideVerifiedReplies),
       hideVerifiedUseDB: Boolean(value.hideVerifiedUseDB),
+      hideVerifiedDBOnlyExceptions: Boolean(value.hideVerifiedDBOnlyExceptions),
       hideVerifiedNotInterested: Boolean(value.hideVerifiedNotInterested),
       hidePremium: Boolean(value.hidePremium),
       hideWhatsHappening: Boolean(value.hideWhatsHappening),
@@ -322,6 +324,11 @@
     hideVerifiedUseDB.type = 'checkbox';
     hideVerifiedUseDBSwitch.append(hideVerifiedUseDB, makeElement('span', '', 'Использовать БД'));
 
+    const hideVerifiedDBOnlyExceptionsSwitch = makeElement('label', 'xff-switch xff-switch-child');
+    const hideVerifiedDBOnlyExceptions = makeElement('input', 'xff-hide-verified-db-only-exceptions');
+    hideVerifiedDBOnlyExceptions.type = 'checkbox';
+    hideVerifiedDBOnlyExceptionsSwitch.append(hideVerifiedDBOnlyExceptions, makeElement('span', '', 'Только исключения'));
+
     const hidePremiumSwitch = makeElement('label', 'xff-switch');
     const hidePremium = makeElement('input', 'xff-hide-premium');
     hidePremium.type = 'checkbox';
@@ -361,7 +368,7 @@
     nameFilterIncludeReplies.type = 'checkbox';
     nameFilterIncludeRepliesSwitch.append(nameFilterIncludeReplies, makeElement('span', '', 'Также учитывать ответы'));
 
-    otherTab.append(hideVerifiedSwitch, hideVerifiedRepliesSwitch, hideVerifiedNotInterestedSwitch, hideVerifiedUseDBSwitch, nameFilterSwitch, nameFilterKeywordsField, nameFilterNotInterestedSwitch, nameFilterIncludeRepliesSwitch);
+    otherTab.append(hideVerifiedSwitch, hideVerifiedRepliesSwitch, hideVerifiedNotInterestedSwitch, hideVerifiedUseDBSwitch, hideVerifiedDBOnlyExceptionsSwitch, nameFilterSwitch, nameFilterKeywordsField, nameFilterNotInterestedSwitch, nameFilterIncludeRepliesSwitch);
     irritantsTab.append(hidePremiumSwitch, hideWhatsHappeningSwitch, hideWhoToFollowSwitch);
 
     const status = makeElement('div', 'xff-status');
@@ -408,6 +415,7 @@
       hideVerifiedReplies,
       hideVerifiedNotInterested,
       hideVerifiedUseDB,
+      hideVerifiedDBOnlyExceptions,
       hidePremium,
       hideWhatsHappening,
       hideWhoToFollow,
@@ -469,6 +477,13 @@
 
     ui.hideVerifiedUseDB.addEventListener('change', () => {
       settings.hideVerifiedUseDB = ui.hideVerifiedUseDB.checked;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
+
+    ui.hideVerifiedDBOnlyExceptions.addEventListener('change', () => {
+      settings.hideVerifiedDBOnlyExceptions = ui.hideVerifiedDBOnlyExceptions.checked;
       saveSettings();
       renderUi();
       scheduleScan();
@@ -974,6 +989,65 @@
         border-color: #ff4444 !important;
       }
 
+      #xff-root .xff-db-btn-bar {
+        width: 100% !important;
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: center !important;
+        gap: 8px !important;
+        margin: 6px 0 !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+      }
+
+      #xff-root .xff-db-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: auto !important;
+        min-width: 0 !important;
+        height: auto !important;
+        aspect-ratio: auto !important;
+        border: 1px solid var(--xff-border) !important;
+        border-radius: 10px !important;
+        background: #ff4444 !important;
+        background-image: none !important;
+        color: #ffffff !important;
+        font-size: 13px !important;
+        font-weight: 700 !important;
+        cursor: pointer !important;
+        outline: none !important;
+        padding: 6px 14px !important;
+        line-height: 1 !important;
+        white-space: nowrap !important;
+      }
+
+      #xff-root .xff-db-btn-filter {
+        background: #ff4444 !important;
+        border-color: #ff4444 !important;
+        color: #ffffff !important;
+      }
+
+      #xff-root .xff-db-btn-filter:hover {
+        background: #cc0000 !important;
+        border-color: #cc0000 !important;
+      }
+
+      #xff-root .xff-db-btn-except {
+        background: #00aa00 !important;
+        border-color: #00aa00 !important;
+        color: #ffffff !important;
+      }
+
+      #xff-root .xff-db-btn-except:hover {
+        background: #008800 !important;
+        border-color: #008800 !important;
+      }
+
+      #xff-root .xff-post-wrapper {
+        position: relative !important;
+      }
+
       @media (max-width: 520px) {
         #xff-root {
           right: 74px !important;
@@ -1088,6 +1162,13 @@
 
     GM_registerMenuCommand('Вкл/выкл использовать БД для галочников', () => {
       settings.hideVerifiedUseDB = !settings.hideVerifiedUseDB;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
+
+    GM_registerMenuCommand('Вкл/выкл только исключения для БД', () => {
+      settings.hideVerifiedDBOnlyExceptions = !settings.hideVerifiedDBOnlyExceptions;
       saveSettings();
       renderUi();
       scheduleScan();
@@ -1224,19 +1305,36 @@
             hide = true;
           }
         } else {
-          // With DB: hide only authors with action "Фильтровать"
+          // With DB
           const authorNicks = getVerifiedAuthorNick(post);
           let shouldHide = false;
           let dbChanged = false;
+          let needsButtons = false;
+          let buttonNick = null;
 
           for (const nick of authorNicks) {
             const dbEntry = settings.dbUsers.find((u) => u.nick === nick);
             if (!dbEntry) {
               settings.dbUsers.push({ nick, action: 'Не выбрано' });
               dbChanged = true;
-              // Don't hide when new entry with default action
+              // Under "Только исключения": new entries are hidden (not exceptions)
+              // Under normal DB mode: new entries are not hidden
+              if (settings.hideVerifiedDBOnlyExceptions) {
+                shouldHide = true;
+              } else {
+                needsButtons = true;
+                buttonNick = nick;
+              }
+            } else if (settings.hideVerifiedDBOnlyExceptions) {
+              // Only exceptions mode: hide everything except "Исключение"
+              if (dbEntry.action !== 'Исключение') {
+                shouldHide = true;
+              }
             } else if (dbEntry.action === 'Фильтровать') {
               shouldHide = true;
+            } else if (dbEntry.action === 'Не выбрано') {
+              needsButtons = true;
+              buttonNick = nick;
             }
           }
 
@@ -1251,6 +1349,10 @@
             } else {
               hide = true;
             }
+          } else if (needsButtons && buttonNick) {
+            addDbActionButtons(post, buttonNick);
+          } else {
+            removeDbActionButtons(post);
           }
         }
       }
@@ -1277,6 +1379,7 @@
 
       if (hide) {
         const wrapper = getPostWrapper(post);
+        wrapper.classList.add('xff-post-wrapper');
         wrapper.setAttribute('data-xff-hidden', 'true');
         hiddenCount++;
       } else if (!settings.nameFilterNotInterested || !isNameFiltered(post, settings.nameFilterIncludeReplies)) {
@@ -1310,6 +1413,140 @@
         }
       }
     }, 800);
+  }
+
+  function addDbActionButtons(post, nick) {
+    if (post.getAttribute('data-xff-db-buttons-added')) {
+      return;
+    }
+
+    const wrapper = getPostWrapper(post);
+    if (!wrapper) {
+      return;
+    }
+
+    const btnBar = makeElement('div', 'xff-db-btn-bar');
+    Object.assign(btnBar.style, {
+      width: '100%',
+      display: 'flex',
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: '8px',
+      margin: '6px 0',
+      padding: '0',
+      boxSizing: 'border-box'
+    });
+
+    const btnFilter = makeElement('div', 'xff-db-btn xff-db-btn-filter', 'Скрыть галочника');
+    btnFilter.setAttribute('role', 'button');
+    btnFilter.setAttribute('aria-label', 'Скрыть посты этого галочника');
+    Object.assign(btnFilter.style, {
+      background: '#ff4444',
+      borderColor: '#ff4444',
+      color: '#ffffff',
+      borderRadius: '9999px',
+      borderStyle: 'solid',
+      borderWidth: '1px',
+      fontSize: '13px',
+      fontWeight: '700',
+      cursor: 'pointer',
+      padding: '6px 14px',
+      lineHeight: '1',
+      whiteSpace: 'nowrap',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 'auto',
+      height: 'auto',
+      minWidth: '0',
+      aspectRatio: 'auto',
+      outline: 'none',
+      boxSizing: 'border-box'
+    });
+    btnFilter.addEventListener('mouseenter', () => {
+      btnFilter.style.background = '#cc0000';
+      btnFilter.style.borderColor = '#cc0000';
+    });
+    btnFilter.addEventListener('mouseleave', () => {
+      btnFilter.style.background = '#ff4444';
+      btnFilter.style.borderColor = '#ff4444';
+    });
+    btnFilter.addEventListener('click', () => {
+      setDbUserAction(nick, 'Фильтровать');
+      removeDbActionButtons(post);
+      wrapper.setAttribute('data-xff-hidden', 'true');
+    });
+
+    const btnExcept = makeElement('div', 'xff-db-btn xff-db-btn-except', 'Пощадить галочника');
+    btnExcept.setAttribute('role', 'button');
+    btnExcept.setAttribute('aria-label', 'Не скрывать посты этого галочника');
+    Object.assign(btnExcept.style, {
+      background: '#00aa00',
+      borderColor: '#00aa00',
+      color: '#ffffff',
+      borderRadius: '9999px',
+      borderStyle: 'solid',
+      borderWidth: '1px',
+      fontSize: '13px',
+      fontWeight: '700',
+      cursor: 'pointer',
+      padding: '6px 14px',
+      lineHeight: '1',
+      whiteSpace: 'nowrap',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 'auto',
+      height: 'auto',
+      minWidth: '0',
+      aspectRatio: 'auto',
+      outline: 'none',
+      boxSizing: 'border-box'
+    });
+    btnExcept.addEventListener('mouseenter', () => {
+      btnExcept.style.background = '#008800';
+      btnExcept.style.borderColor = '#008800';
+    });
+    btnExcept.addEventListener('mouseleave', () => {
+      btnExcept.style.background = '#00aa00';
+      btnExcept.style.borderColor = '#00aa00';
+    });
+    btnExcept.addEventListener('click', () => {
+      setDbUserAction(nick, 'Исключение');
+      removeDbActionButtons(post);
+    });
+
+    btnBar.append(btnFilter, btnExcept);
+
+    // Insert button bar at the very top of the wrapper, before article content
+    const article = wrapper.querySelector('article');
+    if (article) {
+      article.parentNode.insertBefore(btnBar, article);
+    } else {
+      wrapper.insertBefore(btnBar, wrapper.firstChild);
+    }
+
+    post.setAttribute('data-xff-db-buttons-added', 'true');
+  }
+
+  function removeDbActionButtons(post) {
+    const wrapper = getPostWrapper(post);
+    if (!wrapper) {
+      return;
+    }
+    const btnBar = wrapper.querySelector('.xff-db-btn-bar');
+    if (btnBar) {
+      btnBar.remove();
+    }
+    post.removeAttribute('data-xff-db-buttons-added');
+  }
+
+  function setDbUserAction(nick, action) {
+    const entry = settings.dbUsers.find((u) => u.nick === nick);
+    if (entry) {
+      entry.action = action;
+      saveSettings();
+    }
   }
 
   function isVerifiedPost(post) {
@@ -1645,6 +1882,8 @@
     ui.hideVerifiedNotInterested.disabled = !settings.hideVerified;
     ui.hideVerifiedUseDB.checked = settings.hideVerifiedUseDB;
     ui.hideVerifiedUseDB.disabled = !settings.hideVerified;
+    ui.hideVerifiedDBOnlyExceptions.checked = settings.hideVerifiedDBOnlyExceptions;
+    ui.hideVerifiedDBOnlyExceptions.disabled = !settings.hideVerifiedUseDB;
     ui.hidePremium.checked = settings.hidePremium;
     ui.hideWhatsHappening.checked = settings.hideWhatsHappening;
     ui.hideWhoToFollow.checked = settings.hideWhoToFollow;
@@ -1679,6 +1918,7 @@
     const verifiedRepliesState = settings.hideVerifiedReplies ? 'вкл' : 'выкл';
     const verifiedNotInterestedState = settings.hideVerifiedNotInterested ? 'вкл' : 'выкл';
     const verifiedUseDBState = settings.hideVerifiedUseDB ? 'вкл' : 'выкл';
+    const verifiedDBOnlyExceptionsState = settings.hideVerifiedDBOnlyExceptions ? 'вкл' : 'выкл';
     const premiumState = settings.hidePremium ? 'вкл' : 'выкл';
     const whatsHappeningState = settings.hideWhatsHappening ? 'вкл' : 'выкл';
     const whoToFollowState = settings.hideWhoToFollow ? 'вкл' : 'выкл';
@@ -1686,7 +1926,7 @@
     const notInterestedState = settings.nameFilterNotInterested ? 'вкл' : 'выкл';
     const includeRepliesState = settings.nameFilterIncludeReplies ? 'вкл' : 'выкл';
     ui.status.textContent =
-      `Новизна: ${recencyState}. Галочники: ${verifiedState}. Ответы галочникам: ${verifiedRepliesState}. Прожимать неинтересно: ${verifiedNotInterestedState}. БД: ${verifiedUseDBState}. Премиум: ${premiumState}. Что происходит: ${whatsHappeningState}. Кого читать: ${whoToFollowState}. Фильтр имён: ${nameFilterState}. Неинтересное: ${notInterestedState}. Ответы: ${includeRepliesState}. ` +
+      `Новизна: ${recencyState}. Галочники: ${verifiedState}. Ответы галочникам: ${verifiedRepliesState}. Прожимать неинтересно: ${verifiedNotInterestedState}. БД: ${verifiedUseDBState}. Только исключения: ${verifiedDBOnlyExceptionsState}. Премиум: ${premiumState}. Что происходит: ${whatsHappeningState}. Кого читать: ${whoToFollowState}. Фильтр имён: ${nameFilterState}. Неинтересное: ${notInterestedState}. Ответы: ${includeRepliesState}. ` +
       `Скрыто: ${hiddenCount}. Прожито "неинтересно": ${notInterestedCount}. Всего постов: ${totalCount}.`;
   }
 
