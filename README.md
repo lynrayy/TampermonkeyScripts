@@ -1,11 +1,12 @@
-# TampermonkeyScripts
-Scripts for tampermonkey.
-For use, install **[Tampermonkey](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)** first!
-
 <p align="right">
   <a href="README.md"><kbd>🇷🇺 Русский</kbd></a>
   <a href="README.en.md"><kbd>🇺🇸 English</kbd></a>
 </p>
+# TampermonkeyScripts
+Скрипты для tampermonkey.
+Сначала установите **[Tampermonkey](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)**!
+
+#
 
 ## WARNING
 (Russian, translate if needed) 
@@ -16,35 +17,35 @@ For use, install **[Tampermonkey](https://chromewebstore.google.com/detail/tampe
 
 ## Youtube
 ### - 🗑 Add remove from WL button | [GITHUB](https://github.com/lynrayy/YT-RM-BTN)
-Adds trash button to videos in watch later playlist. Now you can easily cleanup this nasty playlist
+Добавляет к видео кнопку мусорки в плейлисте "Смотреть позже". Позволяет в один клик удалять видео из плейлиста.
 
 ### - ⛓️‍💥 Video Feed Filter | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/YoutubeFeedFilter.user.js) 
-Adds filter button. You can hide from main/subscription/recomendation feed videos that:
-- Too long or too short
-- Too old or too fresh
-- Hide "Джем" playlists
-Tested only with russian language but may work on english too
+Добавляет меню фильтра. Мы можете скрыть из рекомендаций/подписок видео, которые:
+- Слишком длинные или короткие
+- Слишком старые или новые
+- Скрыть плейлисты "Джем" (кроме тех, что на вкладке самого джема)
 
 ## X.com (Twitter)
 ### - ⛓️‍💥 X.com feed filter | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js)
-Adds filter button. You can hide:
-- Posts from authors with blacklisted words/flags
-- Too old/fresh posts
-- Premium ad, What happens, Who to follow blocks
+Добавляет меню фильтра. Вы можете скрыть:
+- Посты от авторов, у которых в нике слова из чёрного списка
+- Слишком старые/новые посты
+- Разные блоки справа
+- Посты от авторов с галочками
 
 ## Bloomly.fun
 ### - 👁‍🗨 Remove distractions | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/BloomlyUndistractable.user.js)
-Disable distractable styles on bloomly
+Отключает раздражающие стили на сайте
 
 ## (Obsolete)
-Scripts below are obsolete and not supported
+Скрипты ниже устарели и не поддерживаются
 
 ## Medesk.net (Obsolete)
 ### - 🧠 Medesk 30 auto inteval | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/medesk_auto_interval_30.user.js) 
-Always set interval to 30 in app.medesk.net
+Всегда выставляет интервал расписания на 30 в app.medesk.net
 ### - 🎬 Duplicate medesk schedule entry to the next week | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/medesk_dupe_entry_to_next_week.user.js) 
-Automatizes clicks for duplicating schedule entry to the next week
+Автоматизирует клики для дублирования расписания на следующую неделю
 
 ## Google (Obsolete)
 ### - 🔗 Fix pink links in google search | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/GoogleSearchFixPinklinks.user.js) 
-Visited links are purple, not visited are blue. And nothing else. In case all your results turned purple (Google is A/B testing you)
+Посещённые ссылки - фиолетовые, не посещённые - голубые. И ничего более. На случай, если у вас все ссылки стали фиолетовыми (Google проводит над вами A/B тестирование)

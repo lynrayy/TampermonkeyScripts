@@ -1,11 +1,12 @@
-# TampermonkeyScripts
-Scripts for tampermonkey.
-For use, install **[Tampermonkey](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)** first!
-
 <p align="right">
   <a href="README.md"><kbd>🇷🇺 Русский</kbd></a>
   <a href="README.en.md"><kbd>🇺🇸 English</kbd></a>
 </p>
+# TampermonkeyScripts
+Scripts for tampermonkey.
+For use, install **[Tampermonkey](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)** first!
+
+#
 
 ## WARNING
 Scripts are primarily oriented towards Russian versions of websites with corresponding element localization. If you use a different interface language, you will likely need to fix much of the hardcode that element detection relies on. We live in the era of neural networks, so may Claude help you.
