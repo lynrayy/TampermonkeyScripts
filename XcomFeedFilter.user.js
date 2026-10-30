@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.0.17
+// @version      1.0.18
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.0.16';
+    const SCRIPT_VERSION = '1.0.18';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
 
     const RECENCY_UNITS = {
@@ -1504,14 +1504,14 @@
     }
 
     if (settings.hideWhatsHappening) {
-      findElementsByHeading('Что происходит').forEach(el => {
+      findElementsByHeading('Что происходит', 8).forEach(el => {
         const parent = el.parentElement;
         if (parent) {
           parent.setAttribute('data-xff-hidden', 'true');
         }
       });
     } else {
-      findElementsByHeading('Что происходит').forEach(el => {
+      findElementsByHeading('Что происходит', 8).forEach(el => {
         const parent = el.parentElement;
         if (parent) {
           parent.removeAttribute('data-xff-hidden');
@@ -1526,7 +1526,7 @@
           parent.setAttribute('data-xff-hidden', 'true');
         }
       });
-      findElementsByHeading('Who to follow').forEach(el => el.setAttribute('data-xff-hidden', 'true'));
+      findElementsByHeading('Who to follow', 5).forEach(el => el.setAttribute('data-xff-hidden', 'true'));
     } else {
       document.querySelectorAll('aside[aria-label*="Кого читать"]').forEach(el => {
         const parent = el.parentElement;
@@ -1534,24 +1534,26 @@
           parent.removeAttribute('data-xff-hidden');
         }
       });
-      findElementsByHeading('Who to follow').forEach(el => el.removeAttribute('data-xff-hidden'));
+      findElementsByHeading('Who to follow', 5).forEach(el => el.removeAttribute('data-xff-hidden'));
     }
   }
 
-  function findElementsByHeading(headingText) {
+  function findElementsByHeading(headingText, maxDepth) {
     const elements = [];
     const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
     for (const heading of headings) {
       const text = (heading.textContent || '').trim();
       if (text === headingText || text.startsWith(headingText)) {
         let parent = heading.parentElement;
+        let depth = 0;
         let found = false;
-        while (parent && !found) {
+        while (parent && depth < maxDepth && !found) {
           if (parent.tagName === 'SECTION' || parent.getAttribute('role') === 'region' || parent.getAttribute('role') === 'complementary') {
             elements.push(parent);
             found = true;
           } else {
             parent = parent.parentElement;
+            depth++;
           }
         }
         if (!found) {
