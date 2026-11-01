@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.3.12
+// @version      1.3.14
 // @name:en      X.com Feed Filter
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
@@ -103,6 +103,9 @@
         action: 'Действие',
         export: 'Экспорт',
         import: 'Импорт',
+        db_import_result: 'Импорт завершён. Добавлено: {added}, обновлено: {updated}, пропущено: {skipped}.',
+        db_import_invalid: 'Не удалось импортировать файл. Нужен JSON со списком записей базы.',
+        db_export_failed: 'Не удалось экспортировать базу.',
         db_action_none: 'Не выбрано',
         db_action_filter: 'Фильтровать',
         db_action_exception: 'Исключение',
@@ -212,6 +215,9 @@
         action: 'Action',
         export: 'Export',
         import: 'Import',
+        db_import_result: 'Import complete. Added: {added}, updated: {updated}, skipped: {skipped}.',
+        db_import_invalid: 'Could not import the file. Expected JSON containing a list of database entries.',
+        db_export_failed: 'Could not export the database.',
         db_action_none: 'Not selected',
         db_action_filter: 'Filter',
         db_action_exception: 'Exception',
@@ -243,7 +249,7 @@
       },
     };
 
-    const SCRIPT_VERSION = '1.3.12';
+    const SCRIPT_VERSION = '1.3.14';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
     const POST_SELECTOR = 'article[data-testid="tweet"], article[role="article"]';
     const AUTHOR_NAME_SELECTOR = '[data-testid="User-Name"]';
@@ -1244,14 +1250,12 @@
     const status = makeElement('div', 'xff-status');
 
     const dbClearBtn = makeLocalizedButton('xff-db-clear', 'clear_database');
-    const dbClearExceptBtn = makeLocalizedButton('xff-db-clear-except xff-unimplemented', 'clear_except_exceptions');
-    dbClearExceptBtn.disabled = true;
-    const dbSearchField = makeElement('label', 'xff-db-search-field xff-unimplemented');
+    const dbClearExceptBtn = makeLocalizedButton('xff-db-clear-except', 'clear_except_exceptions');
+    const dbSearchField = makeElement('label', 'xff-db-search-field');
     dbSearchField.append(makeLocalizedElement('span', '', 'search'));
     const dbSearch = makeElement('input', 'xff-db-search');
     dbSearch.type = 'search';
     setLocalizedAttribute(dbSearch, 'placeholder', 'search');
-    dbSearch.disabled = true;
     dbSearchField.append(dbSearch);
     const dbTable = makeElement('table', 'xff-db-table');
     const dbThead = makeElement('thead');
@@ -1264,12 +1268,14 @@
     dbTable.append(dbThead, dbTbody);
 
     const dbExtraActions = makeElement('div', 'xff-db-extra-actions');
-    const dbExportBtn = makeLocalizedButton('xff-db-extra-button xff-unimplemented', 'export');
-    const dbImportBtn = makeLocalizedButton('xff-db-extra-button xff-unimplemented', 'import');
-    dbExportBtn.disabled = true;
-    dbImportBtn.disabled = true;
+    const dbExportBtn = makeLocalizedButton('xff-db-extra-button', 'export');
+    const dbImportBtn = makeLocalizedButton('xff-db-extra-button', 'import');
     dbExtraActions.append(dbExportBtn, dbImportBtn);
-    dbTab.append(dbClearBtn, dbClearExceptBtn, dbSearchField, dbTable, dbExtraActions);
+    const dbImportFile = makeElement('input', 'xff-db-import-file');
+    dbImportFile.type = 'file';
+    dbImportFile.accept = '.json,application/json';
+    dbImportFile.hidden = true;
+    dbTab.append(dbClearBtn, dbClearExceptBtn, dbSearchField, dbTable, dbExtraActions, dbImportFile);
 
     panel.append(topRow, tabBar, tabDivider, subtabBar, recencyTab, otherTab, irritantsTab, dbTab, status);
     host.append(button, panel);
@@ -1344,6 +1350,11 @@
       status,
       presetSelect,
       dbClearBtn,
+      dbClearExceptBtn,
+      dbExportBtn,
+      dbImportBtn,
+      dbImportFile,
+      dbSearch,
       dbTbody,
       menuItemCheckboxes,
       postElementCheckboxes,
@@ -1391,6 +1402,23 @@
       saveSettings();
       renderDbTable();
     });
+
+    ui.dbClearExceptBtn.addEventListener('click', () => {
+      settings.dbUsers = settings.dbUsers.filter((user) => user.action === 'Исключение');
+      dbTableDirty = true;
+      saveSettings();
+      renderDbTable();
+    });
+
+    ui.dbExportBtn.addEventListener('click', exportDatabase);
+    ui.dbImportBtn.addEventListener('click', () => {
+      ui.dbImportFile.value = '';
+      ui.dbImportFile.click();
+    });
+    ui.dbImportFile.addEventListener('change', () => {
+      importDatabaseFile(ui.dbImportFile.files?.[0]);
+    });
+    ui.dbSearch.addEventListener('input', filterDatabaseRows);
 
     ui.recencyEnabled.addEventListener('change', () => {
       settings.recencyEnabled = ui.recencyEnabled.checked;
@@ -2295,6 +2323,10 @@
         width: 100% !important;
         border-collapse: collapse !important;
         margin-top: 12px !important;
+      }
+
+      #xff-root .xff-db-table tr[hidden] {
+        display: none !important;
       }
 
       #xff-root .xff-db-table th,
@@ -4417,6 +4449,7 @@
     for (let i = 0; i < dbUsers.length; i++) {
       const user = dbUsers[i];
       const row = makeElement('tr');
+      row.dataset.nick = String(user.nick || '').replace(/^@/, '');
 
       const cellNick = makeElement('td');
       const nickLink = makeElement('a');
@@ -4476,7 +4509,168 @@
 
       ui.dbTbody.append(row);
     }
+    filterDatabaseRows();
     dbTableDirty = false;
+  }
+
+  function filterDatabaseRows() {
+    if (!ui?.dbTbody || !ui.dbSearch) {
+      return;
+    }
+    const query = ui.dbSearch.value.trim().replace(/^@/, '').toLowerCase();
+    Array.from(ui.dbTbody.rows).forEach((row) => {
+      const nick = (row.dataset.nick || '').toLowerCase();
+      row.hidden = Boolean(query && !nick.includes(query));
+    });
+  }
+
+  function exportDatabase() {
+    try {
+      const actionCodes = {
+        'Не выбрано': 'none',
+        'Фильтровать': 'filter',
+        'Исключение': 'exception',
+      };
+      const payload = {
+        format: 'xcom-feed-filter-db',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        users: settings.dbUsers.map((user) => ({
+          nick: user.nick,
+          action: actionCodes[user.action] || 'none',
+        })),
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const objectUrl = URL.createObjectURL(blob);
+      const downloadLink = makeElement('a');
+      downloadLink.href = objectUrl;
+      downloadLink.download = `xcom-feed-filter-db-${new Date().toISOString().slice(0, 10)}.json`;
+      downloadLink.style.display = 'none';
+      document.body.append(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (error) {
+      console.warn('[X Feed Filter] Could not export the database.', error);
+      window.alert(translate('db_export_failed'));
+    }
+  }
+
+  function getImportedDatabaseRecords(parsed) {
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+    if (Array.isArray(parsed.users)) {
+      return parsed.users;
+    }
+    if (Array.isArray(parsed.dbUsers)) {
+      return parsed.dbUsers;
+    }
+    return null;
+  }
+
+  function normalizeImportedDatabaseRecord(record) {
+    if (!record || typeof record !== 'object') {
+      return null;
+    }
+    const nick = String(record.nick ?? record.username ?? record.handle ?? '')
+      .trim()
+      .replace(/^@/, '');
+    if (!/^[a-z\d_]{1,15}$/i.test(nick)) {
+      return null;
+    }
+
+    const rawAction = String(record.action ?? record.actionCode ?? '').trim().toLowerCase();
+    const actionMap = {
+      none: 'Не выбрано',
+      'not selected': 'Не выбрано',
+      'не выбрано': 'Не выбрано',
+      filter: 'Фильтровать',
+      'фильтровать': 'Фильтровать',
+      exception: 'Исключение',
+      'исключение': 'Исключение',
+    };
+    const action = actionMap[rawAction];
+    return action ? { nick, action } : null;
+  }
+
+  async function importDatabaseFile(file) {
+    if (!file) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(await file.text());
+      const records = getImportedDatabaseRecords(parsed);
+      if (!records) {
+        throw new Error('The JSON file does not contain a users or dbUsers array.');
+      }
+
+      const existingIndexes = new Map();
+      settings.dbUsers.forEach((user, index) => {
+        const key = String(user.nick || '').toLowerCase();
+        if (key) {
+          existingIndexes.set(key, index);
+        }
+      });
+
+      const seenInFile = new Set();
+      let added = 0;
+      let updated = 0;
+      let skipped = 0;
+      let changed = false;
+
+      for (const record of records) {
+        const imported = normalizeImportedDatabaseRecord(record);
+        if (!imported) {
+          skipped += 1;
+          continue;
+        }
+        const key = imported.nick.toLowerCase();
+        if (seenInFile.has(key)) {
+          skipped += 1;
+          continue;
+        }
+        seenInFile.add(key);
+
+        const existingIndex = existingIndexes.get(key);
+        if (existingIndex === undefined) {
+          existingIndexes.set(key, settings.dbUsers.length);
+          settings.dbUsers.push(imported);
+          added += 1;
+          changed = true;
+          continue;
+        }
+
+        if (settings.dbUsers[existingIndex].action !== imported.action) {
+          settings.dbUsers[existingIndex].action = imported.action;
+          updated += 1;
+          changed = true;
+        } else {
+          skipped += 1;
+        }
+      }
+
+      if (changed) {
+        dbTableDirty = true;
+        saveSettings();
+        if (settings.tab === 'db' && settings.panelOpen) {
+          renderDbTable();
+        }
+        scheduleScan();
+      }
+      window.alert(formatTranslation('db_import_result', { added, updated, skipped }));
+    } catch (error) {
+      console.warn('[X Feed Filter] Could not import the database file.', error);
+      window.alert(translate('db_import_invalid'));
+    } finally {
+      if (ui?.dbImportFile) {
+        ui.dbImportFile.value = '';
+      }
+    }
   }
 
   function hideIrritantElements() {
