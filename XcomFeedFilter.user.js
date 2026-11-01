@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.3.8
+// @version      1.3.12
+// @name:en      X.com Feed Filter
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
+// @description:en Filters X (Twitter) feed posts by recency and hides posts from verified users
 // @author       Lynrayy
 // @license      MIT
 // @match        https://x.com/*
@@ -20,7 +22,228 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.3.8';
+    const lang = {
+      ru: {
+        lang_label: 'Русский',
+        lang_select: 'Выбрать язык',
+        title: 'Фильтр X',
+        close: 'Закрыть',
+        tab_recency: 'Новизна',
+        tab_posts: 'Посты',
+        tab_ui: 'UI',
+        tab_database: 'БД',
+        sub_verified: 'Галочники',
+        sub_names: 'Имена',
+        sub_content: 'Содержимое',
+        sub_other: 'Прочее',
+        sub_floating_buttons: 'Плавающие кнопки',
+        sub_side_panels: 'Панели справа',
+        sub_menu_buttons: 'Кнопки меню',
+        sub_post_elements: 'Элементы постов',
+        recency_enabled: 'Фильтр новизны',
+        recency_from: 'От',
+        recency_to: 'До',
+        preset_placeholder: 'Пресет…',
+        preset_today: 'Сегодня',
+        preset_week: 'Эта неделя',
+        preset_month: 'Этот месяц',
+        unit_seconds: 'секунд',
+        unit_minutes: 'минут',
+        unit_hours: 'часов',
+        unit_days: 'дней',
+        unit_weeks: 'недель',
+        unit_months: 'месяцев',
+        unit_years: 'лет',
+        hide_verified: 'Скрывать посты от галочников',
+        hide_verified_replies: 'Также скрывать ответы на их посты',
+        press_not_interested: 'Прожимать «Не интересно»',
+        use_database: 'Использовать БД',
+        exceptions_only: 'Только исключения',
+        premium_ads: 'Реклама Premium',
+        whats_happening: 'Что происходит',
+        who_to_follow: 'Кого читать',
+        name_filter: 'Фильтр имён',
+        forbidden_words: 'Запрещённые слова (через запятую)',
+        words_example: 'слово, фраза, эмодзи',
+        include_replies: 'Также учитывать ответы',
+        content_blacklist: 'Чёрный список слов',
+        hide_pure_retweets: 'Скрывать чисто репосты',
+        hide_viewed: 'Скрывать просмотренные',
+        hide_replies: 'Скрывать посты-ответы',
+        hide_who_to_follow_feed: 'Скрывать Who to follow',
+        keyboard_navigation: 'Навигация на стрелочки',
+        keyboard_help: '[↑] Предыдущий пост\n[↓] Следующий пост\n[←] Не интересно\n[→] Лайк\nТакже поддерживает WASD',
+        hide_following_buttons: 'Скрывать следующие кнопки:',
+        hide_following_panels: 'Скрывать следующие панели:',
+        hide_following_menu_items: 'Скрывать следующие пункты меню:',
+        add_following_buttons: 'Добавить следующие кнопки:',
+        other_options: 'Другие опции',
+        floating_grok: 'Grok',
+        floating_chat: 'Чат',
+        menu_home: 'Главная',
+        menu_explore: 'Обзор',
+        menu_notifications: 'Уведомления',
+        menu_chat: 'Чат',
+        menu_calls: 'Звонки',
+        menu_grok: 'Grok',
+        menu_history: 'История',
+        menu_creator_studio: 'Творческая студия',
+        menu_premium: 'Premium',
+        menu_profile: 'Профиль',
+        menu_more: 'Ещё',
+        change_history_icon: 'Изменить иконку История',
+        post_grok_button: 'Кнопка Grok',
+        post_dislike_button: 'Дизлайк',
+        post_ignore_button: 'Игнор',
+        post_blacklist_button: 'Чёрный список',
+        clear_database: 'Очистить базу',
+        clear_except_exceptions: 'Очистить кроме исключений',
+        search: 'Поиск',
+        nickname: 'Ник',
+        action: 'Действие',
+        export: 'Экспорт',
+        import: 'Импорт',
+        db_action_none: 'Не выбрано',
+        db_action_filter: 'Фильтровать',
+        db_action_exception: 'Исключение',
+        db_hide_verified: 'Скрыть галочника',
+        db_hide_verified_aria: 'Скрыть посты этого галочника',
+        db_allow_verified: 'Пощадить галочника',
+        db_allow_verified_aria: 'Не скрывать посты этого галочника',
+        delete: 'Удалить',
+        post_action_dislike: 'Мне не интересна эта публикация',
+        post_action_ignore: 'Игнорировать',
+        post_action_blacklist: 'Внести в чёрный список',
+        open_filter: 'Открыть фильтр X',
+        command_toggle_recency: 'Вкл/выкл фильтр новизны',
+        command_toggle_verified: 'Вкл/выкл скрывание постов от галочников',
+        command_toggle_verified_replies: 'Вкл/выкл скрывание ответов на посты галочников',
+        command_toggle_verified_not_interested: 'Вкл/выкл прожимать «Не интересно» для постов от галочников',
+        command_toggle_verified_database: 'Вкл/выкл использовать БД для галочников',
+        command_toggle_database_exceptions: 'Вкл/выкл только исключения для БД',
+        command_toggle_premium: 'Вкл/выкл скрывание рекламы Premium',
+        command_toggle_whats_happening: 'Вкл/выкл скрывание «Что происходит»',
+        command_toggle_who_to_follow: 'Вкл/выкл скрывание «Кого читать»',
+        command_toggle_names: 'Вкл/выкл фильтр имён',
+        command_toggle_names_not_interested: 'Вкл/выкл прожимать «Не интересно» для фильтра имён',
+        command_toggle_names_replies: 'Вкл/выкл учитывать ответы в фильтре имён',
+        status_counts: 'Всего постов: {total}. Скрыто: {hidden}.',
+        status_handler: 'Обработчик «Не интересно» обнаружен: {state}',
+        state_true: 'Да',
+        state_false: 'Нет',
+      },
+      en: {
+        lang_label: 'English',
+        lang_select: 'Select language',
+        title: 'X Filter',
+        close: 'Close',
+        tab_recency: 'Recency',
+        tab_posts: 'Posts',
+        tab_ui: 'UI',
+        tab_database: 'DB',
+        sub_verified: 'Verified',
+        sub_names: 'Names',
+        sub_content: 'Content',
+        sub_other: 'Other',
+        sub_floating_buttons: 'Floating buttons',
+        sub_side_panels: 'Right panels',
+        sub_menu_buttons: 'Menu buttons',
+        sub_post_elements: 'Post elements',
+        recency_enabled: 'Recency filter',
+        recency_from: 'From',
+        recency_to: 'To',
+        preset_placeholder: 'Preset…',
+        preset_today: 'Today',
+        preset_week: 'This week',
+        preset_month: 'This month',
+        unit_seconds: 'seconds',
+        unit_minutes: 'minutes',
+        unit_hours: 'hours',
+        unit_days: 'days',
+        unit_weeks: 'weeks',
+        unit_months: 'months',
+        unit_years: 'years',
+        hide_verified: 'Hide posts from verified accounts',
+        hide_verified_replies: 'Also hide replies to their posts',
+        press_not_interested: 'Press “Not interested”',
+        use_database: 'Use database',
+        exceptions_only: 'Exceptions only',
+        premium_ads: 'Premium promotion',
+        whats_happening: 'What’s happening',
+        who_to_follow: 'Who to follow',
+        name_filter: 'Name filter',
+        forbidden_words: 'Forbidden words (comma-separated)',
+        words_example: 'word, phrase, emoji',
+        include_replies: 'Also include replies',
+        content_blacklist: 'Word blacklist',
+        hide_pure_retweets: 'Hide repost-only posts',
+        hide_viewed: 'Hide viewed posts',
+        hide_replies: 'Hide replies',
+        hide_who_to_follow_feed: 'Hide Who to follow',
+        keyboard_navigation: 'Arrow key navigation',
+        keyboard_help: '[↑] Previous post\n[↓] Next post\n[←] Not interested\n[→] Like\nWASD is also supported',
+        hide_following_buttons: 'Hide the following buttons:',
+        hide_following_panels: 'Hide the following panels:',
+        hide_following_menu_items: 'Hide the following menu items:',
+        add_following_buttons: 'Add the following buttons:',
+        other_options: 'Other options',
+        floating_grok: 'Grok',
+        floating_chat: 'Chat',
+        menu_home: 'Home',
+        menu_explore: 'Explore',
+        menu_notifications: 'Notifications',
+        menu_chat: 'Chat',
+        menu_calls: 'Calls',
+        menu_grok: 'Grok',
+        menu_history: 'History',
+        menu_creator_studio: 'Creator Studio',
+        menu_premium: 'Premium',
+        menu_profile: 'Profile',
+        menu_more: 'More',
+        change_history_icon: 'Change History icon',
+        post_grok_button: 'Grok button',
+        post_dislike_button: 'Dislike',
+        post_ignore_button: 'Ignore',
+        post_blacklist_button: 'Blacklist',
+        clear_database: 'Clear database',
+        clear_except_exceptions: 'Clear all except exceptions',
+        search: 'Search',
+        nickname: 'Username',
+        action: 'Action',
+        export: 'Export',
+        import: 'Import',
+        db_action_none: 'Not selected',
+        db_action_filter: 'Filter',
+        db_action_exception: 'Exception',
+        db_hide_verified: 'Hide verified account',
+        db_hide_verified_aria: 'Hide posts from this verified account',
+        db_allow_verified: 'Allow verified account',
+        db_allow_verified_aria: 'Do not hide posts from this verified account',
+        delete: 'Delete',
+        post_action_dislike: 'Not interested in this post',
+        post_action_ignore: 'Ignore',
+        post_action_blacklist: 'Add to blacklist',
+        open_filter: 'Open X Filter',
+        command_toggle_recency: 'Toggle recency filter',
+        command_toggle_verified: 'Toggle hiding posts from verified accounts',
+        command_toggle_verified_replies: 'Toggle hiding replies to verified accounts’ posts',
+        command_toggle_verified_not_interested: 'Toggle “Not interested” for verified accounts’ posts',
+        command_toggle_verified_database: 'Toggle using the database for verified accounts',
+        command_toggle_database_exceptions: 'Toggle database exceptions only',
+        command_toggle_premium: 'Toggle hiding Premium promotion',
+        command_toggle_whats_happening: 'Toggle hiding “What’s happening”',
+        command_toggle_who_to_follow: 'Toggle hiding “Who to follow”',
+        command_toggle_names: 'Toggle name filter',
+        command_toggle_names_not_interested: 'Toggle “Not interested” for the name filter',
+        command_toggle_names_replies: 'Toggle including replies in the name filter',
+        status_counts: 'Total posts: {total}. Hidden: {hidden}.',
+        status_handler: '“Not interested” handler detected: {state}',
+        state_true: 'Yes',
+        state_false: 'No',
+      },
+    };
+
+    const SCRIPT_VERSION = '1.3.12';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
     const POST_SELECTOR = 'article[data-testid="tweet"], article[role="article"]';
     const AUTHOR_NAME_SELECTOR = '[data-testid="User-Name"]';
@@ -45,27 +268,27 @@
     };
 
     const RECENCY_UNIT_LABELS = [
-        ['seconds', 'секунд'],
-        ['minutes', 'минут'],
-        ['hours', 'часов'],
-        ['days', 'дней'],
-        ['weeks', 'недель'],
-        ['months', 'месяцев'],
-        ['years', 'лет'],
+        ['seconds', 'unit_seconds'],
+        ['minutes', 'unit_minutes'],
+        ['hours', 'unit_hours'],
+        ['days', 'unit_days'],
+        ['weeks', 'unit_weeks'],
+        ['months', 'unit_months'],
+        ['years', 'unit_years'],
     ];
 
     const NAV_MENU_ITEMS = [
-        { setting: 'hideMenuHome', label: 'Главная', selector: '[data-testid="AppTabBar_Home_Link"]' },
-        { setting: 'hideMenuExplore', label: 'Обзор', selector: '[data-testid="AppTabBar_Explore_Link"]' },
-        { setting: 'hideMenuNotifications', label: 'Уведомления', selector: '[data-testid="AppTabBar_Notifications_Link"]' },
-        { setting: 'hideMenuChat', label: 'Чат', selector: '[data-testid="AppTabBar_DirectMessage_Link"]' },
-        { setting: 'hideMenuCalls', label: 'Звонки', selector: '[data-testid="AppTabBar_Calls_Link"]' },
-        { setting: 'hideMenuGrok', label: 'Grok', selector: 'a[href="/i/grok"]' },
-        { setting: 'hideMenuHistory', label: 'История', selector: 'a[href="/i/history"]' },
-        { setting: 'hideMenuCreatorStudio', label: 'Творческая студия', selector: 'a[href="/i/jf/creators/studio"]' },
-        { setting: 'hideMenuPremium', label: 'Premium', selector: '[data-testid="premium-signup-tab"]' },
-        { setting: 'hideMenuProfile', label: 'Профиль', selector: '[data-testid="AppTabBar_Profile_Link"]' },
-        { setting: 'hideMenuMore', label: 'Ещё', selector: '[data-testid="AppTabBar_More_Menu"]' },
+        { setting: 'hideMenuHome', labelKey: 'menu_home', selector: '[data-testid="AppTabBar_Home_Link"]' },
+        { setting: 'hideMenuExplore', labelKey: 'menu_explore', selector: '[data-testid="AppTabBar_Explore_Link"]' },
+        { setting: 'hideMenuNotifications', labelKey: 'menu_notifications', selector: '[data-testid="AppTabBar_Notifications_Link"]' },
+        { setting: 'hideMenuChat', labelKey: 'menu_chat', selector: '[data-testid="AppTabBar_DirectMessage_Link"]' },
+        { setting: 'hideMenuCalls', labelKey: 'menu_calls', selector: '[data-testid="AppTabBar_Calls_Link"]' },
+        { setting: 'hideMenuGrok', labelKey: 'menu_grok', selector: 'a[href="/i/grok"]' },
+        { setting: 'hideMenuHistory', labelKey: 'menu_history', selector: 'a[href="/i/history"]' },
+        { setting: 'hideMenuCreatorStudio', labelKey: 'menu_creator_studio', selector: 'a[href="/i/jf/creators/studio"]' },
+        { setting: 'hideMenuPremium', labelKey: 'menu_premium', selector: '[data-testid="premium-signup-tab"]' },
+        { setting: 'hideMenuProfile', labelKey: 'menu_profile', selector: '[data-testid="AppTabBar_Profile_Link"]' },
+        { setting: 'hideMenuMore', labelKey: 'menu_more', selector: '[data-testid="AppTabBar_More_Menu"]' },
     ];
 
     const POST_ACTION_SHORTCUTS = [
@@ -73,7 +296,7 @@
             setting: 'showPostDislikeButton',
             name: 'dislike',
             actionType: 'dislike',
-            ariaLabel: 'Мне не интересна эта публикация',
+            ariaLabelKey: 'post_action_dislike',
             paths: [
                 { d: 'M12 13.6c1.64-.013 3.278.76 4.284 2.02.114.14.218.282.317.43l-1.202.9c-.088-.102-.177-.197-.272-.289-.844-.823-1.98-1.264-3.125-1.26-1.146-.002-2.282.441-3.129 1.263-.095.092-.185.186-.273.287l-1.2-.902c.1-.149.205-.29.319-.429C8.728 14.364 10.36 13.59 12 13.6zM9.25 8c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9zm5.5 0c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9z' },
                 { d: 'M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2c-4.418 0-8 3.582-8 8s3.582 8 8 8 8-3.582 8-8-3.582-8-8-8z', clipRule: 'evenodd', fillRule: 'evenodd' },
@@ -83,7 +306,7 @@
             setting: 'showPostIgnoreButton',
             name: 'ignore',
             actionType: 'ignore',
-            ariaLabel: 'Игнорировать',
+            ariaLabelKey: 'post_action_ignore',
             paths: [
                 { d: 'M16 22h-2.35l-.275-.219-3.842-3.073 1.424-1.424L14 19.72v-5.477l2-2V22z' },
                 { d: 'M16 6.586l4.293-4.293 1.414 1.414-18 18-1.414-1.414 2.657-2.658C3.795 17.063 3 15.875 3 14.5v-5C3 7.567 4.567 6 6.5 6h2.148l4.727-3.781.274-.219H16v4.586zM9.625 7.78L9.351 8H6.5C5.672 8 5 8.672 5 9.5v5c0 .828.672 1.5 1.5 1.5h.086L14 8.586V4.28l-4.375 3.5z', clipRule: 'evenodd', fillRule: 'evenodd' },
@@ -93,7 +316,7 @@
             setting: 'showPostBlacklistButton',
             name: 'blacklist',
             actionType: 'blacklist',
-            ariaLabel: 'Внести в черный список',
+            ariaLabelKey: 'post_action_blacklist',
             paths: [
                 { d: 'M12 3.75c-4.55 0-8.25 3.69-8.25 8.25 0 1.92.66 3.68 1.75 5.08L17.09 5.5C15.68 4.4 13.92 3.75 12 3.75zm6.5 3.17L6.92 18.5c1.4 1.1 3.16 1.75 5.08 1.75 4.56 0 8.25-3.69 8.25-8.25 0-1.92-.65-3.68-1.75-5.08zM1.75 12C1.75 6.34 6.34 1.75 12 1.75S22.25 6.34 22.25 12 17.66 22.25 12 22.25 1.75 17.66 1.75 12z' },
             ],
@@ -115,6 +338,7 @@
 
     const DEFAULT_SETTINGS = {
         ...Object.fromEntries(NAV_MENU_ITEMS.map(({ setting }) => [setting, false])),
+        language: 'ru',
         recencyEnabled: false,
         hideVerified: false,
         hideVerifiedReplies: false,
@@ -179,6 +403,7 @@
   let postActionConfirmationTimeout = 0;
   let userScrollIntentVersion = 0;
   let keyboardNavigationPost = null;
+  let dbTableDirty = true;
     let directNotInterestedStrategyRegistered = false;
     let lastHiddenPostCount = 0;
     let lastTotalPostCount = 0;
@@ -233,6 +458,7 @@
     window.removeEventListener('pointermove', recordUserScrollIntent, true);
     window.removeEventListener('keydown', recordUserScrollIntent, true);
     window.removeEventListener('keydown', handleFeedNavigationKeydown, true);
+    document.removeEventListener('click', handleLanguageMenuOutsideClick, true);
     if (ui && ui.host) {
       ui.host.remove();
       ui = null;
@@ -304,7 +530,7 @@
 
     const target = event.target instanceof Element ? event.target : null;
     if (!target
-      || target.closest('input:not([type="checkbox"]), textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="combobox"], [role="dialog"], [role="menu"]')) {
+      || target.closest('input:not([type="checkbox"]), textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="combobox"], [role="dialog"], [role="menu"], #xff-root .xff-language-picker')) {
       return;
     }
 
@@ -474,6 +700,7 @@
   function normalizeSettings(value) {
     return {
       ...Object.fromEntries(NAV_MENU_ITEMS.map(({ setting }) => [setting, Boolean(value[setting])])),
+      language: Object.prototype.hasOwnProperty.call(lang, value.language) ? value.language : 'ru',
       recencyEnabled: Boolean(value.recencyEnabled),
       hideVerified: Boolean(value.hideVerified),
       hideVerifiedReplies: Boolean(value.hideVerifiedReplies),
@@ -683,34 +910,64 @@
     const host = makeElement('div');
     host.id = 'xff-root';
 
-    const button = makeButton('xff-fab', 'XF', 'Фильтр X');
+    const button = makeButton('xff-fab', 'XF', translate('title'));
+    setLocalizedAttribute(button, 'title', 'title');
     button.setAttribute('aria-expanded', 'false');
 
     const panel = makeElement('section', 'xff-panel');
     panel.hidden = true;
-    panel.setAttribute('aria-label', 'Фильтр X');
+    setLocalizedAttribute(panel, 'aria-label', 'title');
 
     const topRow = makeElement('div', 'xff-top-row');
-    const title = makeElement('div', 'xff-title', 'Фильтр X');
+    const title = makeElement('div', 'xff-title');
+    const titleLabel = makeLocalizedElement('span', '', 'title');
     const version = makeElement('span', 'xff-version', `v${SCRIPT_VERSION}`);
-    title.appendChild(version);
-    const close = makeButton('xff-close', '×', 'Закрыть');
-    close.setAttribute('aria-label', 'Закрыть');
-    topRow.append(title, close);
+    title.append(titleLabel, version);
+    const headerActions = makeElement('div', 'xff-header-actions');
+    const languagePicker = makeElement('div', 'xff-language-picker');
+    const languageButton = makeButton('xff-close xff-language-button', '');
+    setLocalizedAttribute(languageButton, 'title', 'lang_select');
+    setLocalizedAttribute(languageButton, 'aria-label', 'lang_select');
+    languageButton.setAttribute('aria-expanded', 'false');
+    const languageIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    languageIcon.setAttribute('viewBox', '0 0 24 24');
+    languageIcon.setAttribute('aria-hidden', 'true');
+    const languageIconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    languageIconPath.setAttribute('d', 'M4.65 8.24c-.57 1.13-.9 2.41-.9 3.76 0 4.56 3.69 8.25 8.25 8.25 2.87 0 5.4-1.47 6.88-3.69l-2.99-1.5.56-3.32-3.01-4.21 4.16-1.59c-1.27-1.17-2.91-1.95-4.72-2.14l-.5 2.38-2.08 1.04-.53 1.41 4.82 1.93-2.16 2.87-1.23 5.54-3.7-1.85V13.1l-.53-2.68.26-.71-2.58-1.47zm1.13-1.66l2.16 1.23.77-2.03 1.91-.96.21-.99c-2.01.29-3.78 1.3-5.05 2.75zm3.26 4l.46 2.32v2.98l.3.15.77-3.46.85-1.13-2.35-.94-.03.08zm9.92-3.02l-2.39.91 1.99 2.79-.45 2.68 1.67.83c.3-.87.47-1.8.47-2.77 0-1.63-.47-3.16-1.29-4.44zM1.75 12C1.75 6.34 6.34 1.75 12 1.75S22.25 6.34 22.25 12 17.66 22.25 12 22.25 1.75 17.66 1.75 12z');
+    languageIcon.append(languageIconPath);
+    languageButton.append(languageIcon);
+    const languageMenu = makeElement('div', 'xff-language-menu');
+    languageMenu.hidden = true;
+    Object.entries(lang).forEach(([languageCode, dictionary]) => {
+      const option = makeButton('xff-language-option', dictionary.lang_label);
+      option.dataset.language = languageCode;
+      option.addEventListener('click', () => setLanguage(languageCode));
+      languageMenu.append(option);
+    });
+    languageButton.addEventListener('click', () => {
+      languageMenu.hidden = !languageMenu.hidden;
+      languageButton.setAttribute('aria-expanded', String(!languageMenu.hidden));
+    });
+    languagePicker.append(languageButton, languageMenu);
+    const close = makeButton('xff-close', '×', translate('close'));
+    setLocalizedAttribute(close, 'title', 'close');
+    setLocalizedAttribute(close, 'aria-label', 'close');
+    headerActions.append(languagePicker, close);
+    topRow.append(title, headerActions);
 
     const tabBar = makeElement('div', 'xff-tabs');
-    const tabRecency = makeButton('xff-tab xff-tab-recency', 'Новизна');
-    const tabOther = makeButton('xff-tab xff-tab-other', 'Посты');
-    const tabIrritants = makeButton('xff-tab xff-tab-irritants', 'UI');
-    const tabDb = makeButton('xff-tab xff-tab-db', 'БД');
+    const tabRecency = makeLocalizedButton('xff-tab xff-tab-recency', 'tab_recency');
+    const tabOther = makeLocalizedButton('xff-tab xff-tab-other', 'tab_posts');
+    const tabIrritants = makeLocalizedButton('xff-tab xff-tab-irritants', 'tab_ui');
+    const tabDb = makeLocalizedButton('xff-tab xff-tab-db', 'tab_database');
     tabBar.append(tabRecency, tabOther, tabIrritants, tabDb);
 
     const tabDivider = makeElement('div', 'xff-tab-divider');
     const subtabBar = makeElement('div', 'xff-subtabs');
-    const makeSubtabButton = (id, label, unimplemented = false) => {
-      const subtabButton = makeButton(
+    const makeSubtabButton = (id, labelKey, unimplemented = false) => {
+      const subtabButton = makeLocalizedButton(
         'xff-tab xff-subtab' + (unimplemented ? ' xff-unimplemented' : ''),
-        label
+        labelKey
       );
       subtabButton.dataset.subtab = id;
       subtabButton.addEventListener('click', () => setSubtab(id));
@@ -718,18 +975,18 @@
     };
     const postSubtabs = makeElement('div', 'xff-subtab-group xff-post-subtabs');
     const postSubtabButtons = [
-      makeSubtabButton('posts-verified', 'Галочники'),
-      makeSubtabButton('posts-names', 'Имена'),
-      makeSubtabButton('posts-content', 'Содержимое'),
-      makeSubtabButton('posts-other', 'Прочее'),
+      makeSubtabButton('posts-verified', 'sub_verified'),
+      makeSubtabButton('posts-names', 'sub_names'),
+      makeSubtabButton('posts-content', 'sub_content'),
+      makeSubtabButton('posts-other', 'sub_other'),
     ];
     postSubtabs.append(...postSubtabButtons);
     const uiSubtabs = makeElement('div', 'xff-subtab-group xff-ui-subtabs');
     const uiSubtabButtons = [
-      makeSubtabButton('ui-floating', 'Плавающие кнопки', true),
-      makeSubtabButton('ui-side-panels', 'Панели справа'),
-      makeSubtabButton('ui-menu-buttons', 'Кнопки меню', true),
-      makeSubtabButton('ui-post-elements', 'Элементы постов'),
+      makeSubtabButton('ui-floating', 'sub_floating_buttons', true),
+      makeSubtabButton('ui-side-panels', 'sub_side_panels'),
+      makeSubtabButton('ui-menu-buttons', 'sub_menu_buttons', true),
+      makeSubtabButton('ui-post-elements', 'sub_post_elements'),
     ];
     uiSubtabs.append(...uiSubtabButtons);
     subtabBar.append(postSubtabs, uiSubtabs);
@@ -745,75 +1002,74 @@
     const recencySwitch = makeElement('label', 'xff-switch');
     const recencyEnabled = makeElement('input', 'xff-recency-enabled');
     recencyEnabled.type = 'checkbox';
-    recencySwitch.append(recencyEnabled, makeElement('span', '', 'Фильтр новизны'));
+    recencySwitch.append(recencyEnabled, makeLocalizedElement('span', '', 'recency_enabled'));
 
-    const recencyMinField = makeRecencyField('От', 'xff-recency-min-input', 'xff-recency-min-unit');
-    const recencyMaxField = makeRecencyField('До', 'xff-recency-max-input', 'xff-recency-max-unit');
+    const recencyMinField = makeRecencyField('recency_from', 'xff-recency-min-input', 'xff-recency-min-unit');
+    const recencyMaxField = makeRecencyField('recency_to', 'xff-recency-max-input', 'xff-recency-max-unit');
 
     recencyTab.append(recencySwitch, recencyMinField.label, recencyMaxField.label);
 
     const presetRow = makeElement('div', 'xff-preset-row');
     const presetSelect = makeElement('select', 'xff-preset-select');
-    const presetPlaceholder = makeElement('option');
+    const presetPlaceholder = makeLocalizedElement('option', '', 'preset_placeholder');
     presetPlaceholder.value = '';
-    presetPlaceholder.textContent = 'Пресет…';
     presetSelect.append(presetPlaceholder);
-    addPresetOption(presetSelect, 'Сегодня', 0, 1, 'seconds', 'days');
-    addPresetOption(presetSelect, 'Эта неделя', 0, 7, 'seconds', 'days');
-    addPresetOption(presetSelect, 'Этот месяц', 0, 1, 'seconds', 'months');
+    addPresetOption(presetSelect, 'preset_today', 0, 1, 'seconds', 'days');
+    addPresetOption(presetSelect, 'preset_week', 0, 7, 'seconds', 'days');
+    addPresetOption(presetSelect, 'preset_month', 0, 1, 'seconds', 'months');
     recencyTab.append(presetRow);
     presetRow.append(presetSelect);
 
     const hideVerifiedSwitch = makeElement('label', 'xff-switch xff-switch-parent');
     const hideVerified = makeElement('input', 'xff-hide-verified');
     hideVerified.type = 'checkbox';
-    hideVerifiedSwitch.append(hideVerified, makeElement('span', '', 'Скрывать посты от галочников'));
+    hideVerifiedSwitch.append(hideVerified, makeLocalizedElement('span', '', 'hide_verified'));
 
     const hideVerifiedRepliesSwitch = makeElement('label', 'xff-switch xff-switch-child');
     const hideVerifiedReplies = makeElement('input', 'xff-hide-verified-replies');
     hideVerifiedReplies.type = 'checkbox';
-    hideVerifiedRepliesSwitch.append(hideVerifiedReplies, makeElement('span', '', 'Также скрывать ответы на их посты'));
+    hideVerifiedRepliesSwitch.append(hideVerifiedReplies, makeLocalizedElement('span', '', 'hide_verified_replies'));
 
     const hideVerifiedNotInterestedSwitch = makeElement('label', 'xff-switch xff-switch-child');
     const hideVerifiedNotInterested = makeElement('input', 'xff-hide-verified-not-interested');
     hideVerifiedNotInterested.type = 'checkbox';
-    hideVerifiedNotInterestedSwitch.append(hideVerifiedNotInterested, makeElement('span', '', 'Прожимать "Не интересно"'));
+    hideVerifiedNotInterestedSwitch.append(hideVerifiedNotInterested, makeLocalizedElement('span', '', 'press_not_interested'));
 
     const hideVerifiedUseDBSwitch = makeElement('label', 'xff-switch xff-switch-child');
     const hideVerifiedUseDB = makeElement('input', 'xff-hide-verified-use-db');
     hideVerifiedUseDB.type = 'checkbox';
-    hideVerifiedUseDBSwitch.append(hideVerifiedUseDB, makeElement('span', '', 'Использовать БД'));
+    hideVerifiedUseDBSwitch.append(hideVerifiedUseDB, makeLocalizedElement('span', '', 'use_database'));
 
     const hideVerifiedDBOnlyExceptionsSwitch = makeElement('label', 'xff-switch xff-switch-child');
     const hideVerifiedDBOnlyExceptions = makeElement('input', 'xff-hide-verified-db-only-exceptions');
     hideVerifiedDBOnlyExceptions.type = 'checkbox';
-    hideVerifiedDBOnlyExceptionsSwitch.append(hideVerifiedDBOnlyExceptions, makeElement('span', '', 'Только исключения'));
+    hideVerifiedDBOnlyExceptionsSwitch.append(hideVerifiedDBOnlyExceptions, makeLocalizedElement('span', '', 'exceptions_only'));
 
     const hidePremiumSwitch = makeElement('label', 'xff-switch');
     const hidePremium = makeElement('input', 'xff-hide-premium');
     hidePremium.type = 'checkbox';
-    hidePremiumSwitch.append(hidePremium, makeElement('span', '', 'Реклама Premium'));
+    hidePremiumSwitch.append(hidePremium, makeLocalizedElement('span', '', 'premium_ads'));
 
     const hideWhatsHappeningSwitch = makeElement('label', 'xff-switch');
     const hideWhatsHappening = makeElement('input', 'xff-hide-whats-happening');
     hideWhatsHappening.type = 'checkbox';
-    hideWhatsHappeningSwitch.append(hideWhatsHappening, makeElement('span', '', 'Что происходит'));
+    hideWhatsHappeningSwitch.append(hideWhatsHappening, makeLocalizedElement('span', '', 'whats_happening'));
 
     const hideWhoToFollowSwitch = makeElement('label', 'xff-switch');
     const hideWhoToFollow = makeElement('input', 'xff-hide-who-to-follow');
     hideWhoToFollow.type = 'checkbox';
-    hideWhoToFollowSwitch.append(hideWhoToFollow, makeElement('span', '', 'Кого читать'));
+    hideWhoToFollowSwitch.append(hideWhoToFollow, makeLocalizedElement('span', '', 'who_to_follow'));
 
     const nameFilterSwitch = makeElement('label', 'xff-switch');
     const nameFilterEnabled = makeElement('input', 'xff-name-filter-enabled');
     nameFilterEnabled.type = 'checkbox';
-    nameFilterSwitch.append(nameFilterEnabled, makeElement('span', '', 'Фильтр имён'));
+    nameFilterSwitch.append(nameFilterEnabled, makeLocalizedElement('span', '', 'name_filter'));
 
     const nameFilterKeywordsField = makeElement('label', 'xff-name-filter-field');
-    const nameFilterKeywordsCaption = makeElement('span', '', 'Запрещённые слова (через запятую)');
+    const nameFilterKeywordsCaption = makeLocalizedElement('span', '', 'forbidden_words');
     const nameFilterKeywordsInput = makeElement('input', 'xff-name-filter-keywords');
     nameFilterKeywordsInput.type = 'text';
-    nameFilterKeywordsInput.placeholder = 'слово, фраза, эмодзи';
+    setLocalizedAttribute(nameFilterKeywordsInput, 'placeholder', 'words_example');
     nameFilterKeywordsInput.autocomplete = 'off';
     nameFilterKeywordsInput.spellcheck = false;
     nameFilterKeywordsField.append(nameFilterKeywordsCaption, nameFilterKeywordsInput);
@@ -821,12 +1077,12 @@
     const nameFilterNotInterestedSwitch = makeElement('label', 'xff-switch xff-switch-child');
     const nameFilterNotInterested = makeElement('input', 'xff-name-filter-not-interested');
     nameFilterNotInterested.type = 'checkbox';
-    nameFilterNotInterestedSwitch.append(nameFilterNotInterested, makeElement('span', '', 'Прожимать "Не интересно"'));
+    nameFilterNotInterestedSwitch.append(nameFilterNotInterested, makeLocalizedElement('span', '', 'press_not_interested'));
 
     const nameFilterIncludeRepliesSwitch = makeElement('label', 'xff-switch xff-switch-child');
     const nameFilterIncludeReplies = makeElement('input', 'xff-name-filter-include-replies');
     nameFilterIncludeReplies.type = 'checkbox';
-    nameFilterIncludeRepliesSwitch.append(nameFilterIncludeReplies, makeElement('span', '', 'Также учитывать ответы'));
+    nameFilterIncludeRepliesSwitch.append(nameFilterIncludeReplies, makeLocalizedElement('span', '', 'include_replies'));
 
     const postVerifiedPanel = makeElement('div', 'xff-subtab-panel xff-post-verified-panel');
     postVerifiedPanel.append(hideVerifiedSwitch, hideVerifiedRepliesSwitch, hideVerifiedNotInterestedSwitch, hideVerifiedUseDBSwitch, hideVerifiedDBOnlyExceptionsSwitch);
@@ -836,13 +1092,13 @@
     const blacklistSwitch = makeElement('label', 'xff-switch');
     const blacklistEnabled = makeElement('input', 'xff-content-filter-enabled');
     blacklistEnabled.type = 'checkbox';
-    blacklistSwitch.append(blacklistEnabled, makeElement('span', '', 'Чёрный список слов'));
+    blacklistSwitch.append(blacklistEnabled, makeLocalizedElement('span', '', 'content_blacklist'));
 
     const blacklistKeywordsField = makeElement('label', 'xff-name-filter-field');
-    const blacklistKeywordsCaption = makeElement('span', '', 'Запрещённые слова (через запятую)');
+    const blacklistKeywordsCaption = makeLocalizedElement('span', '', 'forbidden_words');
     const blacklistKeywordsInput = makeElement('input', 'xff-content-filter-keywords');
     blacklistKeywordsInput.type = 'text';
-    blacklistKeywordsInput.placeholder = 'слово, фраза, эмодзи';
+    setLocalizedAttribute(blacklistKeywordsInput, 'placeholder', 'words_example');
     blacklistKeywordsInput.autocomplete = 'off';
     blacklistKeywordsInput.spellcheck = false;
     blacklistKeywordsField.append(blacklistKeywordsCaption, blacklistKeywordsInput);
@@ -850,12 +1106,12 @@
     const blacklistNotInterestedSwitch = makeElement('label', 'xff-switch xff-switch-child');
     const blacklistNotInterested = makeElement('input', 'xff-content-filter-not-interested');
     blacklistNotInterested.type = 'checkbox';
-    blacklistNotInterestedSwitch.append(blacklistNotInterested, makeElement('span', '', 'Прожимать "Не интересно"'));
+    blacklistNotInterestedSwitch.append(blacklistNotInterested, makeLocalizedElement('span', '', 'press_not_interested'));
 
     const blacklistIncludeRepliesSwitch = makeElement('label', 'xff-switch xff-switch-child');
     const blacklistIncludeReplies = makeElement('input', 'xff-content-filter-include-replies');
     blacklistIncludeReplies.type = 'checkbox';
-    blacklistIncludeRepliesSwitch.append(blacklistIncludeReplies, makeElement('span', '', 'Также учитывать ответы'));
+    blacklistIncludeRepliesSwitch.append(blacklistIncludeReplies, makeLocalizedElement('span', '', 'include_replies'));
     postContentPanel.append(blacklistSwitch, blacklistKeywordsField, blacklistNotInterestedSwitch, blacklistIncludeRepliesSwitch);
 
     const postOtherPanel = makeElement('div', 'xff-subtab-panel xff-post-other-panel');
@@ -863,39 +1119,38 @@
     const retweetsOnlySwitch = makeElement('label', 'xff-switch xff-switch-parent');
     const retweetsOnly = makeElement('input', 'xff-hide-pure-retweets');
     retweetsOnly.type = 'checkbox';
-    retweetsOnlySwitch.append(retweetsOnly, makeElement('span', '', 'Скрывать чисто репосты'));
+    retweetsOnlySwitch.append(retweetsOnly, makeLocalizedElement('span', '', 'hide_pure_retweets'));
 
     const retweetsNotInterestedSwitch = makeElement('label', 'xff-switch xff-switch-child');
     const retweetsNotInterested = makeElement('input', 'xff-hide-pure-retweets-not-interested');
     retweetsNotInterested.type = 'checkbox';
-    retweetsNotInterestedSwitch.append(retweetsNotInterested, makeElement('span', '', 'Прожимать «Не интересно»'));
+    retweetsNotInterestedSwitch.append(retweetsNotInterested, makeLocalizedElement('span', '', 'press_not_interested'));
 
     const hideViewedSwitch = makeElement('label', 'xff-switch xff-unimplemented');
     const hideViewed = makeElement('input', 'xff-unimplemented-control');
     hideViewed.type = 'checkbox';
     hideViewed.disabled = true;
-    hideViewedSwitch.append(hideViewed, makeElement('span', '', 'Скрывать просмотренные'));
+    hideViewedSwitch.append(hideViewed, makeLocalizedElement('span', '', 'hide_viewed'));
 
     const hideRepliesSwitch = makeElement('label', 'xff-switch');
     const hideReplies = makeElement('input', 'xff-hide-replies');
     hideReplies.type = 'checkbox';
-    hideRepliesSwitch.append(hideReplies, makeElement('span', '', 'Скрывать посты-ответы'));
+    hideRepliesSwitch.append(hideReplies, makeLocalizedElement('span', '', 'hide_replies'));
 
     const hideWhoToFollowFeedSwitch = makeElement('label', 'xff-switch');
     const hideWhoToFollowFeed = makeElement('input', 'xff-hide-who-to-follow-feed');
     hideWhoToFollowFeed.type = 'checkbox';
-    hideWhoToFollowFeedSwitch.append(hideWhoToFollowFeed, makeElement('span', '', 'Скрывать Who to follow'));
+    hideWhoToFollowFeedSwitch.append(hideWhoToFollowFeed, makeLocalizedElement('span', '', 'hide_who_to_follow_feed'));
 
     const feedKeyboardNavigationSwitch = makeElement('label', 'xff-switch xff-feed-keyboard-navigation-switch');
     const feedKeyboardNavigation = makeElement('input', 'xff-feed-keyboard-navigation');
     feedKeyboardNavigation.type = 'checkbox';
-    const feedKeyboardNavigationText = makeElement('span', '', 'Навигация на стрелочки');
+    const feedKeyboardNavigationText = makeLocalizedElement('span', '', 'keyboard_navigation');
     const feedKeyboardNavigationHelp = makeElement('span', 'xff-help-tooltip', '?');
-    const feedKeyboardNavigationHelpText = '[↑] Предыдущий пост\n[↓] Следующий пост\n[←] Не интересно\n[→] Лайк\nТакже поддерживает WASD';
-    feedKeyboardNavigationHelp.setAttribute('title', feedKeyboardNavigationHelpText);
+    setLocalizedAttribute(feedKeyboardNavigationHelp, 'title', 'keyboard_help');
     feedKeyboardNavigationHelp.setAttribute('tabindex', '0');
     feedKeyboardNavigationHelp.setAttribute('role', 'img');
-    feedKeyboardNavigationHelp.setAttribute('aria-label', feedKeyboardNavigationHelpText.replace(/\n/g, '. '));
+    setLocalizedAttribute(feedKeyboardNavigationHelp, 'aria-label', 'keyboard_help');
     feedKeyboardNavigationHelp.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -917,7 +1172,7 @@
     const uiMenuButtonsPanel = makeElement('div', 'xff-subtab-panel xff-ui-menu-buttons-panel');
     const uiPostElementsPanel = makeElement('div', 'xff-subtab-panel xff-ui-post-elements-panel');
 
-    const makeUnavailableSwitch = (label, nested = false) => {
+    const makeUnavailableSwitch = (labelKey, nested = false) => {
       const option = makeElement(
         'label',
         'xff-switch xff-unimplemented' + (nested ? ' xff-switch-child' : '')
@@ -925,97 +1180,92 @@
       const checkbox = makeElement('input', 'xff-unimplemented-control');
       checkbox.type = 'checkbox';
       checkbox.disabled = true;
-      option.append(checkbox, makeElement('span', '', label));
+      option.append(checkbox, makeLocalizedElement('span', '', labelKey));
       return option;
     };
-    const makeUnavailableNote = (text, section = false) => makeElement(
-      'div',
-      'xff-unimplemented-note' + (section ? ' xff-unimplemented-section-title' : ''),
-      text
-    );
 
     const floatingButtonCheckboxes = {};
-    const makeFloatingButtonSwitch = (setting, label) => {
+    const makeFloatingButtonSwitch = (setting, labelKey) => {
       const option = makeElement('label', 'xff-switch');
       const checkbox = makeElement('input', `xff-${setting}`);
       checkbox.type = 'checkbox';
-      option.append(checkbox, makeElement('span', '', label));
+      option.append(checkbox, makeLocalizedElement('span', '', labelKey));
       floatingButtonCheckboxes[setting] = checkbox;
       return option;
     };
 
     uiSidePanelsPanel.append(
-      makeUnavailableNote('Скрывать следующие панели:'),
+      makeLocalizedElement('div', 'xff-unimplemented-note', 'hide_following_panels'),
       hidePremiumSwitch,
       hideWhatsHappeningSwitch,
       hideWhoToFollowSwitch
     );
 
     uiFloatingPanel.append(
-      makeUnavailableNote('Скрывать следующие кнопки:'),
-      makeFloatingButtonSwitch('hideFloatingGrok', 'Grok'),
-      makeFloatingButtonSwitch('hideFloatingChat', 'Чат')
+      makeLocalizedElement('div', 'xff-unimplemented-note', 'hide_following_buttons'),
+      makeFloatingButtonSwitch('hideFloatingGrok', 'floating_grok'),
+      makeFloatingButtonSwitch('hideFloatingChat', 'floating_chat')
     );
 
     const menuItemCheckboxes = {};
-    uiMenuButtonsPanel.append(makeUnavailableNote('Скрывать следующие пункты меню:'));
-    NAV_MENU_ITEMS.forEach(({ setting, label }) => {
+    uiMenuButtonsPanel.append(makeLocalizedElement('div', 'xff-unimplemented-note', 'hide_following_menu_items'));
+    NAV_MENU_ITEMS.forEach(({ setting, labelKey }) => {
       const option = makeElement('label', 'xff-switch');
       const checkbox = makeElement('input', `xff-${setting}`);
       checkbox.type = 'checkbox';
-      option.append(checkbox, makeElement('span', '', label));
+      option.append(checkbox, makeLocalizedElement('span', '', labelKey));
       menuItemCheckboxes[setting] = checkbox;
       uiMenuButtonsPanel.append(option);
     });
     uiMenuButtonsPanel.append(
-      makeUnavailableNote('Другие опции', true),
-      makeUnavailableSwitch('Изменить иконку История')
+      makeLocalizedElement('div', 'xff-unimplemented-note xff-unimplemented-section-title', 'other_options'),
+      makeUnavailableSwitch('change_history_icon')
     );
 
     const postElementCheckboxes = {};
-    const makePostElementSwitch = (setting, label, remainsUnimplemented = false) => {
+    const makePostElementSwitch = (setting, labelKey, remainsUnimplemented = false) => {
       const option = makeElement('label', 'xff-switch' + (remainsUnimplemented ? ' xff-unimplemented' : ''));
       const checkbox = makeElement('input', `xff-${setting}`);
       checkbox.type = 'checkbox';
-      option.append(checkbox, makeElement('span', '', label));
+      option.append(checkbox, makeLocalizedElement('span', '', labelKey));
       postElementCheckboxes[setting] = checkbox;
       return option;
     };
     uiPostElementsPanel.append(
-      makeUnavailableNote('Скрывать следующие кнопки:'),
-      makePostElementSwitch('hidePostGrokButton', 'Кнопка Grok'),
-      makeUnavailableNote('Добавить следующие кнопки:'),
-      makePostElementSwitch('showPostDislikeButton', 'Дизлайк'),
-      makePostElementSwitch('showPostIgnoreButton', 'Игнор'),
-      makePostElementSwitch('showPostBlacklistButton', 'Чёрный список')
+      makeLocalizedElement('div', 'xff-unimplemented-note', 'hide_following_buttons'),
+      makePostElementSwitch('hidePostGrokButton', 'post_grok_button'),
+      makeLocalizedElement('div', 'xff-unimplemented-note', 'add_following_buttons'),
+      makePostElementSwitch('showPostDislikeButton', 'post_dislike_button'),
+      makePostElementSwitch('showPostIgnoreButton', 'post_ignore_button'),
+      makePostElementSwitch('showPostBlacklistButton', 'post_blacklist_button')
     );
     irritantsTab.append(uiFloatingPanel, uiSidePanelsPanel, uiMenuButtonsPanel, uiPostElementsPanel);
 
     const status = makeElement('div', 'xff-status');
 
-    const dbClearBtn = makeButton('xff-db-clear', 'Очистить базу');
-    const dbClearExceptBtn = makeButton('xff-db-clear-except xff-unimplemented', 'Очистить кроме исключений');
+    const dbClearBtn = makeLocalizedButton('xff-db-clear', 'clear_database');
+    const dbClearExceptBtn = makeLocalizedButton('xff-db-clear-except xff-unimplemented', 'clear_except_exceptions');
     dbClearExceptBtn.disabled = true;
     const dbSearchField = makeElement('label', 'xff-db-search-field xff-unimplemented');
-    dbSearchField.append(makeElement('span', '', 'Поиск'));
+    dbSearchField.append(makeLocalizedElement('span', '', 'search'));
     const dbSearch = makeElement('input', 'xff-db-search');
     dbSearch.type = 'search';
-    dbSearch.placeholder = 'Поиск';
+    setLocalizedAttribute(dbSearch, 'placeholder', 'search');
     dbSearch.disabled = true;
     dbSearchField.append(dbSearch);
     const dbTable = makeElement('table', 'xff-db-table');
     const dbThead = makeElement('thead');
     const dbTrHead = makeElement('tr');
-    const dbThNick = makeElement('th', 'xff-db-th-nick', 'Ник');
-    const dbThAction = makeElement('th', 'xff-db-th-action', 'Действие');
+    const dbThNick = makeLocalizedElement('th', 'xff-db-th-nick', 'nickname');
+    const dbThAction = makeLocalizedElement('th', 'xff-db-th-action', 'action');
     const dbTbody = makeElement('tbody', 'xff-db-tbody');
     dbTrHead.append(dbThNick, dbThAction);
     dbThead.append(dbTrHead);
     dbTable.append(dbThead, dbTbody);
 
     const dbExtraActions = makeElement('div', 'xff-db-extra-actions');
-    const dbExportBtn = makeButton('xff-db-extra-button xff-unimplemented', 'Экспорт');
-    const dbImportBtn = makeButton('xff-db-extra-button xff-unimplemented', 'Импорт');
+    const dbExportBtn = makeLocalizedButton('xff-db-extra-button xff-unimplemented', 'export');
+    const dbImportBtn = makeLocalizedButton('xff-db-extra-button xff-unimplemented', 'import');
     dbExportBtn.disabled = true;
     dbImportBtn.disabled = true;
     dbExtraActions.append(dbExportBtn, dbImportBtn);
@@ -1037,6 +1287,9 @@
       button,
       panel,
       close,
+      languagePicker,
+      languageButton,
+      languageMenu,
       tabRecency,
       tabOther,
       tabIrritants,
@@ -1097,6 +1350,7 @@
       floatingButtonCheckboxes,
     };
 
+    document.addEventListener('click', handleLanguageMenuOutsideClick, true);
     ui.button.addEventListener('click', () => setPanelOpen(!settings.panelOpen));
     ui.close.addEventListener('click', () => setPanelOpen(false));
     ui.tabRecency.addEventListener('click', () => setTab('recency'));
@@ -1133,6 +1387,7 @@
 
     ui.dbClearBtn.addEventListener('click', () => {
       settings.dbUsers = [];
+      dbTableDirty = true;
       saveSettings();
       renderDbTable();
     });
@@ -1638,6 +1893,60 @@
         align-items: center !important;
         justify-content: space-between !important;
         gap: 10px !important;
+      }
+
+      #xff-root .xff-header-actions {
+        display: flex !important;
+        align-items: center !important;
+        gap: 4px !important;
+        flex: 0 0 auto !important;
+      }
+
+      #xff-root .xff-language-picker {
+        position: relative !important;
+      }
+
+      #xff-root .xff-language-button svg {
+        display: block !important;
+        width: 18px !important;
+        height: 18px !important;
+        fill: currentColor !important;
+      }
+
+      #xff-root .xff-language-menu {
+        position: absolute !important;
+        z-index: 10002 !important;
+        top: calc(100% + 6px) !important;
+        right: 0 !important;
+        min-width: 128px !important;
+        padding: 4px !important;
+        border: 1px solid var(--xff-border) !important;
+        border-radius: 7px !important;
+        background: var(--xff-bg) !important;
+        box-shadow: var(--xff-shadow) !important;
+      }
+
+      #xff-root .xff-language-menu[hidden] {
+        display: none !important;
+      }
+
+      #xff-root .xff-language-option {
+        display: block !important;
+        width: 100% !important;
+        border: 0 !important;
+        border-radius: 4px !important;
+        background: transparent !important;
+        color: var(--xff-text) !important;
+        padding: 7px 9px !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        text-align: left !important;
+        cursor: pointer !important;
+      }
+
+      #xff-root .xff-language-option:hover,
+      #xff-root .xff-language-option[aria-pressed="true"] {
+        background: var(--xff-accent-soft) !important;
       }
 
       #xff-root .xff-title {
@@ -2187,6 +2496,60 @@
     return element;
   }
 
+  function translate(key) {
+    const selectedLanguage = lang[settings.language] || lang.ru;
+    return selectedLanguage[key] ?? lang.ru[key] ?? key;
+  }
+
+  function formatTranslation(key, values = {}) {
+    return translate(key).replace(/\{(\w+)\}/g, (match, name) => {
+      return Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : match;
+    });
+  }
+
+  function setLocalizedText(element, key) {
+    element.dataset.xffI18nText = key;
+    element.textContent = translate(key);
+    return element;
+  }
+
+  function makeLocalizedElement(tagName, className, key) {
+    return setLocalizedText(makeElement(tagName, className), key);
+  }
+
+  function makeLocalizedButton(className, key) {
+    const button = makeButton(className, translate(key));
+    return setLocalizedText(button, key);
+  }
+
+  function setLocalizedAttribute(element, attribute, key) {
+    const dataKey = {
+      title: 'xffI18nTitle',
+      'aria-label': 'xffI18nAriaLabel',
+      placeholder: 'xffI18nPlaceholder',
+    }[attribute];
+    if (!dataKey) {
+      return;
+    }
+    element.dataset[dataKey] = key;
+    element.setAttribute(attribute, translate(key));
+  }
+
+  function applyTranslations(root = document) {
+    root.querySelectorAll('[data-xff-i18n-text]').forEach((element) => {
+      element.textContent = translate(element.dataset.xffI18nText);
+    });
+    [
+      ['title', 'data-xff-i18n-title'],
+      ['aria-label', 'data-xff-i18n-aria-label'],
+      ['placeholder', 'data-xff-i18n-placeholder'],
+    ].forEach(([attribute, selector]) => {
+      root.querySelectorAll(`[${selector}]`).forEach((element) => {
+        element.setAttribute(attribute, translate(element.getAttribute(selector)));
+      });
+    });
+  }
+
   function makeButton(className, text, title = '') {
     const button = makeElement('button', className, text);
     button.type = 'button';
@@ -2198,7 +2561,7 @@
 
   function makeRecencyField(labelText, valueClassName, unitClassName) {
     const label = makeElement('label', 'xff-recency-field');
-    const caption = makeElement('span', '', labelText);
+    const caption = makeLocalizedElement('span', '', labelText);
     const controls = makeElement('div', 'xff-recency-controls');
     const input = makeElement('input', valueClassName);
     input.type = 'number';
@@ -2208,10 +2571,9 @@
     input.autocomplete = 'off';
     input.spellcheck = false;
     const select = makeElement('select', unitClassName);
-    for (const [key, text] of RECENCY_UNIT_LABELS) {
-      const option = makeElement('option');
+    for (const [key, labelKey] of RECENCY_UNIT_LABELS) {
+      const option = makeLocalizedElement('option', '', labelKey);
       option.value = key;
-      option.textContent = text;
       select.append(option);
     }
     controls.append(input, select);
@@ -2219,10 +2581,9 @@
     return { label, input, select };
   }
 
-  function addPresetOption(select, text, minSeconds, maxSeconds, minUnit, maxUnit) {
-    const option = makeElement('option');
+  function addPresetOption(select, textKey, minSeconds, maxSeconds, minUnit, maxUnit) {
+    const option = makeLocalizedElement('option', '', textKey);
     option.value = `${minSeconds}-${maxSeconds}-${minUnit}-${maxUnit}`;
-    option.textContent = text;
     select.append(option);
   }
 
@@ -2241,88 +2602,88 @@
       return;
     }
 
-    GM_registerMenuCommand('Открыть фильтр X', () => {
+    GM_registerMenuCommand(translate('open_filter'), () => {
       setPanelOpen(true);
     });
 
-    GM_registerMenuCommand('Вкл/выкл фильтр новизны', () => {
+    GM_registerMenuCommand(translate('command_toggle_recency'), () => {
       settings.recencyEnabled = !settings.recencyEnabled;
       saveSettings();
       renderUi();
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл скрывание постов от галочников', () => {
+    GM_registerMenuCommand(translate('command_toggle_verified'), () => {
       settings.hideVerified = !settings.hideVerified;
       saveSettings();
       renderUi();
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл скрывание ответов на посты галочников', () => {
+    GM_registerMenuCommand(translate('command_toggle_verified_replies'), () => {
       settings.hideVerifiedReplies = !settings.hideVerifiedReplies;
       saveSettings();
       renderUi();
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл прожимать "Не интересно" для постов от галочников', () => {
+    GM_registerMenuCommand(translate('command_toggle_verified_not_interested'), () => {
       settings.hideVerifiedNotInterested = !settings.hideVerifiedNotInterested;
       saveSettings();
       renderUi();
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл использовать БД для галочников', () => {
+    GM_registerMenuCommand(translate('command_toggle_verified_database'), () => {
       settings.hideVerifiedUseDB = !settings.hideVerifiedUseDB;
       saveSettings();
       renderUi();
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл только исключения для БД', () => {
+    GM_registerMenuCommand(translate('command_toggle_database_exceptions'), () => {
       settings.hideVerifiedDBOnlyExceptions = !settings.hideVerifiedDBOnlyExceptions;
       saveSettings();
       renderUi();
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл скрывание рекламы Premium', () => {
+    GM_registerMenuCommand(translate('command_toggle_premium'), () => {
       settings.hidePremium = !settings.hidePremium;
       saveSettings();
       renderUi();
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл скрывание "Что происходит"', () => {
+    GM_registerMenuCommand(translate('command_toggle_whats_happening'), () => {
       settings.hideWhatsHappening = !settings.hideWhatsHappening;
       saveSettings();
       renderUi();
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл скрывание "Кого читать"', () => {
+    GM_registerMenuCommand(translate('command_toggle_who_to_follow'), () => {
       settings.hideWhoToFollow = !settings.hideWhoToFollow;
       saveSettings();
       renderUi();
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл фильтр имён', () => {
+    GM_registerMenuCommand(translate('command_toggle_names'), () => {
       settings.nameFilterEnabled = !settings.nameFilterEnabled;
       saveSettings();
       renderUi();
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл прожимать "Не интересно"', () => {
+    GM_registerMenuCommand(translate('command_toggle_names_not_interested'), () => {
       settings.nameFilterNotInterested = !settings.nameFilterNotInterested;
       saveSettings();
       renderUi();
       scheduleScan();
     });
 
-    GM_registerMenuCommand('Вкл/выкл учитывать ответы в фильтре имён', () => {
+    GM_registerMenuCommand(translate('command_toggle_names_replies'), () => {
       settings.nameFilterIncludeReplies = !settings.nameFilterIncludeReplies;
       saveSettings();
       renderUi();
@@ -2677,7 +3038,7 @@
 
     const button = makeElement('button', 'xff-post-action-shortcut');
     button.type = 'button';
-    button.setAttribute('aria-label', shortcut.ariaLabel);
+    setLocalizedAttribute(button, 'aria-label', shortcut.ariaLabelKey);
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -2900,6 +3261,7 @@
             if (!dbEntry) {
               settings.dbUsers.push({ nick, action: 'Не выбрано' });
               dbChanged = true;
+              dbTableDirty = true;
               // Under "Только исключения": new entries are hidden (not exceptions)
               // Under normal DB mode: new entries are not hidden
               if (settings.hideVerifiedDBOnlyExceptions) {
@@ -3005,6 +3367,9 @@
 
     restoreScrollAnchor(scrollAnchor);
 
+    if (settings.tab === 'db' && settings.panelOpen && dbTableDirty) {
+      renderDbTable();
+    }
     updateStatus(hiddenCount, totalCount);
 
     hideIrritantElements();
@@ -3416,9 +3781,9 @@
       boxSizing: 'border-box'
     });
 
-    const btnFilter = makeElement('div', 'xff-db-btn xff-db-btn-filter', 'Скрыть галочника');
+    const btnFilter = makeLocalizedElement('div', 'xff-db-btn xff-db-btn-filter', 'db_hide_verified');
     btnFilter.setAttribute('role', 'button');
-    btnFilter.setAttribute('aria-label', 'Скрыть посты этого галочника');
+    setLocalizedAttribute(btnFilter, 'aria-label', 'db_hide_verified_aria');
     Object.assign(btnFilter.style, {
       background: '#ff4444',
       borderColor: '#ff4444',
@@ -3457,9 +3822,9 @@
       });
     });
 
-    const btnExcept = makeElement('div', 'xff-db-btn xff-db-btn-except', 'Пощадить галочника');
+    const btnExcept = makeLocalizedElement('div', 'xff-db-btn xff-db-btn-except', 'db_allow_verified');
     btnExcept.setAttribute('role', 'button');
-    btnExcept.setAttribute('aria-label', 'Не скрывать посты этого галочника');
+    setLocalizedAttribute(btnExcept, 'aria-label', 'db_allow_verified_aria');
     Object.assign(btnExcept.style, {
       background: '#00aa00',
       borderColor: '#00aa00',
@@ -3525,7 +3890,11 @@
     const entry = settings.dbUsers.find((u) => u.nick === nick);
     if (entry) {
       entry.action = action;
+      dbTableDirty = true;
       saveSettings();
+      if (settings.tab === 'db' && settings.panelOpen) {
+        renderDbTable();
+      }
     }
   }
 
@@ -3830,6 +4199,35 @@
     renderUi();
   }
 
+  function setLanguage(languageCode) {
+    if (!Object.prototype.hasOwnProperty.call(lang, languageCode)) {
+      return;
+    }
+    settings.language = languageCode;
+    if (ui?.languageMenu) {
+      ui.languageMenu.hidden = true;
+      ui.languageButton.setAttribute('aria-expanded', 'false');
+      ui.languageMenu.querySelectorAll('.xff-language-option').forEach((option) => {
+        option.setAttribute('aria-pressed', String(option.dataset.language === languageCode));
+      });
+      if (document.activeElement instanceof HTMLElement && ui.languagePicker.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
+    }
+    saveSettings();
+    renderUi();
+    applyTranslations(document);
+    updateStatus(lastHiddenPostCount, lastTotalPostCount);
+  }
+
+  function handleLanguageMenuOutsideClick(event) {
+    if (!ui?.languagePicker || ui.languagePicker.contains(event.target)) {
+      return;
+    }
+    ui.languageMenu.hidden = true;
+    ui.languageButton.setAttribute('aria-expanded', 'false');
+  }
+
   function setSubtab(subtab) {
     const validSubtabs = [
       'posts-verified',
@@ -3900,6 +4298,7 @@
     }
 
     settings = normalizeSettings(settings);
+    ui.host.lang = settings.language;
     if (settings.tab === 'other' && !settings.subtab.startsWith('posts-')) {
       settings.subtab = 'posts-verified';
     } else if (settings.tab === 'irritants' && !settings.subtab.startsWith('ui-')) {
@@ -3908,6 +4307,9 @@
 
     ui.panel.hidden = !settings.panelOpen;
     ui.button.setAttribute('aria-expanded', String(settings.panelOpen));
+    ui.languageMenu.querySelectorAll('.xff-language-option').forEach((option) => {
+      option.setAttribute('aria-pressed', String(option.dataset.language === settings.language));
+    });
 
     ui.tabRecency.setAttribute('aria-selected', String(settings.tab === 'recency'));
     ui.tabOther.setAttribute('aria-selected', String(settings.tab === 'other'));
@@ -3987,7 +4389,9 @@
     ui.recencyMinUnit.value = settings.recencyMinUnit;
     ui.recencyMaxUnit.value = settings.recencyMaxUnit;
 
-    renderDbTable();
+    if (settings.tab === 'db' && settings.panelOpen && dbTableDirty) {
+      renderDbTable();
+    }
   }
 
   function updateStatus(hiddenCount, totalCount) {
@@ -3997,8 +4401,8 @@
       return;
     }
 
-    const handlerDetected = directNotInterestedStrategyRegistered ? 'True' : 'False';
-    ui.status.textContent = `Всего постов: ${totalCount}. Скрыто: ${hiddenCount}.\nNot Interested Detected: ${handlerDetected}`;
+    const handlerDetected = translate(directNotInterestedStrategyRegistered ? 'state_true' : 'state_false');
+    ui.status.textContent = `${formatTranslation('status_counts', { total: totalCount, hidden: hiddenCount })}\n${formatTranslation('status_handler', { state: handlerDetected })}`;
   }
 
   function renderDbTable() {
@@ -4029,11 +4433,14 @@
       const selectAction = makeElement('select', 'xff-db-action-select');
       selectAction.dataset.index = String(i);
 
-      const actionValues = ['Не выбрано', 'Фильтровать', 'Исключение'];
-      for (const actionVal of actionValues) {
-        const option = makeElement('option');
+      const actionValues = [
+        ['Не выбрано', 'db_action_none'],
+        ['Фильтровать', 'db_action_filter'],
+        ['Исключение', 'db_action_exception'],
+      ];
+      for (const [actionVal, labelKey] of actionValues) {
+        const option = makeLocalizedElement('option', '', labelKey);
         option.value = actionVal;
-        option.textContent = actionVal;
         if (actionVal === user.action) {
           option.selected = true;
         }
@@ -4056,7 +4463,7 @@
       const btnDelete = makeElement('button', 'xff-db-delete', '×');
       btnDelete.type = 'button';
       btnDelete.dataset.index = String(i);
-      btnDelete.title = 'Удалить';
+      setLocalizedAttribute(btnDelete, 'title', 'delete');
       btnDelete.addEventListener('click', () => {
         const idx = Number.parseInt(btnDelete.dataset.index, 10);
         settings.dbUsers.splice(idx, 1);
@@ -4069,6 +4476,7 @@
 
       ui.dbTbody.append(row);
     }
+    dbTableDirty = false;
   }
 
   function hideIrritantElements() {
