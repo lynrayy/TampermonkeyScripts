@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.3.7
+// @version      1.3.8
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.3.7';
+    const SCRIPT_VERSION = '1.3.8';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
     const POST_SELECTOR = 'article[data-testid="tweet"], article[role="article"]';
     const AUTHOR_NAME_SELECTOR = '[data-testid="User-Name"]';
@@ -128,6 +128,7 @@
         hidePureRetweets: false,
         hidePureRetweetsNotInterested: false,
         hideReplies: false,
+        feedKeyboardNavigationEnabled: false,
         hideFloatingGrok: false,
         hideFloatingChat: false,
         hidePostGrokButton: false,
@@ -177,6 +178,7 @@
   let postActionConfirmationObserver = null;
   let postActionConfirmationTimeout = 0;
   let userScrollIntentVersion = 0;
+  let keyboardNavigationPost = null;
     let directNotInterestedStrategyRegistered = false;
     let lastHiddenPostCount = 0;
     let lastTotalPostCount = 0;
@@ -230,6 +232,7 @@
     window.removeEventListener('pointerdown', recordUserScrollIntent, true);
     window.removeEventListener('pointermove', recordUserScrollIntent, true);
     window.removeEventListener('keydown', recordUserScrollIntent, true);
+    window.removeEventListener('keydown', handleFeedNavigationKeydown, true);
     if (ui && ui.host) {
       ui.host.remove();
       ui = null;
@@ -267,6 +270,7 @@
     window.addEventListener('pointerdown', recordUserScrollIntent, true);
     window.addEventListener('pointermove', recordUserScrollIntent, true);
     window.addEventListener('keydown', recordUserScrollIntent, true);
+    window.addEventListener('keydown', handleFeedNavigationKeydown, true);
 
     window.addEventListener('popstate', handleRouteChange, true);
     window.addEventListener('load', scheduleScan, true);
@@ -286,7 +290,169 @@
     if (event.type === 'pointermove' && event.buttons === 0) {
       return;
     }
+    if (event.type !== 'keydown') {
+      keyboardNavigationPost = null;
+    }
     userScrollIntentVersion += 1;
+  }
+
+  function handleFeedNavigationKeydown(event) {
+    if (!settings.feedKeyboardNavigationEnabled || !isHomePage()
+      || event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.repeat) {
+      return;
+    }
+
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target
+      || target.closest('input:not([type="checkbox"]), textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="combobox"], [role="dialog"], [role="menu"]')) {
+      return;
+    }
+
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    const actions = {
+      ArrowUp: 'previous',
+      ArrowDown: 'next',
+      ArrowLeft: 'dislike',
+      ArrowRight: 'like',
+    };
+    const wasdActions = {
+      KeyW: 'previous',
+      KeyS: 'next',
+      KeyA: 'dislike',
+      KeyD: 'like',
+    };
+    const action = actions[key] || wasdActions[event.code];
+    if (!action) {
+      return;
+    }
+
+    const posts = getKeyboardNavigablePosts();
+    const anchorY = getFeedNavigationAnchorY();
+    if (action === 'previous' || action === 'next') {
+      const rememberedPost = keyboardNavigationPost?.isConnected && posts.includes(keyboardNavigationPost)
+        ? keyboardNavigationPost
+        : null;
+      const nextPost = rememberedPost
+        ? getAdjacentKeyboardNavigationPost(posts, rememberedPost, action)
+        : getInitialKeyboardNavigationPost(posts, action, anchorY);
+      if (!nextPost) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      keyboardNavigationPost = nextPost;
+      alignPostToFeedNavigationAnchor(nextPost, anchorY);
+      return;
+    }
+
+    const currentPost = getKeyboardNavigationPost(posts, anchorY);
+    if (!currentPost) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    keyboardNavigationPost = currentPost;
+    if (action === 'like') {
+      const likeButton = currentPost.querySelector('[data-testid="like"], [data-testid="unlike"]');
+      likeButton?.click();
+      return;
+    }
+
+    clickNotInterested(currentPost);
+  }
+
+  function getKeyboardNavigablePosts() {
+    const feedRoot = document.querySelector('main') || document;
+    return Array.from(getPostElements(feedRoot)).filter((post) => {
+      if (post.parentElement?.closest(POST_SELECTOR)) {
+        return false;
+      }
+      const wrapper = getPostWrapper(post);
+      if (wrapper?.hasAttribute('data-xff-hidden')) {
+        return false;
+      }
+      const rect = post.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+  }
+
+  function getFeedNavigationAnchorY() {
+    const main = document.querySelector('main');
+    const tablist = Array.from(main?.querySelectorAll('[role="tablist"]') || []).find((element) => {
+      const tabs = Array.from(element.querySelectorAll('[role="tab"]'))
+        .map((tab) => (tab.innerText || tab.getAttribute('aria-label') || '').trim());
+      const hasForYou = tabs.some((label) => /для вас|for you/i.test(label));
+      const hasFollowing = tabs.some((label) => /читаю|following/i.test(label));
+      return hasForYou && hasFollowing;
+    });
+    let anchorY = 0;
+    const headerRect = tablist?.getBoundingClientRect();
+    if (headerRect && headerRect.width > 0 && headerRect.bottom > 0) {
+      anchorY = Math.max(anchorY, headerRect.bottom);
+    }
+
+    const newPostsIndicator = Array.from(document.querySelectorAll('[role="status"], [role="alert"]'))
+      .find((element) => /смотреть новые посты|нов(?:ые|ых) посты|нов(?:ая|ые|ых) публикац|new posts?|added (?:a )?post|добавил[аи]? публикац/i
+        .test((element.innerText || element.textContent || '').trim()));
+    const indicatorRect = newPostsIndicator?.getBoundingClientRect();
+    if (indicatorRect && indicatorRect.width > 0 && indicatorRect.height > 0
+      && indicatorRect.bottom > 0 && indicatorRect.top < window.innerHeight) {
+      anchorY = Math.max(anchorY, indicatorRect.bottom);
+    }
+    return anchorY;
+  }
+
+  function getKeyboardNavigationPost(posts, anchorY) {
+    if (keyboardNavigationPost?.isConnected && posts.includes(keyboardNavigationPost)) {
+      return keyboardNavigationPost;
+    }
+    keyboardNavigationPost = posts.find((post) => {
+      const rect = post.getBoundingClientRect();
+      return rect.top <= anchorY && rect.bottom > anchorY;
+    }) || posts.find((post) => {
+      const rect = post.getBoundingClientRect();
+      return rect.top >= anchorY && rect.top < window.innerHeight;
+    }) || null;
+    return keyboardNavigationPost;
+  }
+
+  function getAdjacentKeyboardNavigationPost(posts, currentPost, direction) {
+    const step = direction === 'next' ? 1 : -1;
+    const currentIndex = posts.indexOf(currentPost);
+    return currentIndex >= 0 ? posts[currentIndex + step] || null : null;
+  }
+
+  function getInitialKeyboardNavigationPost(posts, direction, anchorY) {
+    const step = direction === 'next' ? 1 : -1;
+    const crossingIndex = posts.findIndex((post) => {
+      const rect = post.getBoundingClientRect();
+      return rect.top <= anchorY && rect.bottom > anchorY;
+    });
+    if (crossingIndex >= 0) {
+      return posts[crossingIndex + step] || null;
+    }
+
+    if (step > 0) {
+      return posts.find((post) => post.getBoundingClientRect().top >= anchorY) || null;
+    }
+
+    for (let index = posts.length - 1; index >= 0; index -= 1) {
+      if (posts[index].getBoundingClientRect().bottom <= anchorY) {
+        return posts[index];
+      }
+    }
+    return null;
+  }
+
+  function alignPostToFeedNavigationAnchor(post, anchorY) {
+    const scrollRoot = document.scrollingElement;
+    if (!scrollRoot || !post?.isConnected) {
+      return;
+    }
+    const offset = post.getBoundingClientRect().top - anchorY;
+    if (Math.abs(offset) > 0.5) {
+      scrollRoot.scrollTop += offset;
+    }
   }
 
   function loadSettings() {
@@ -321,6 +487,7 @@
       hidePureRetweets: Boolean(value.hidePureRetweets),
       hidePureRetweetsNotInterested: Boolean(value.hidePureRetweetsNotInterested),
       hideReplies: Boolean(value.hideReplies),
+      feedKeyboardNavigationEnabled: Boolean(value.feedKeyboardNavigationEnabled),
       hideFloatingGrok: Boolean(value.hideFloatingGrok),
       hideFloatingChat: Boolean(value.hideFloatingChat),
       hidePostGrokButton: Boolean(value.hidePostGrokButton),
@@ -719,12 +886,29 @@
     hideWhoToFollowFeed.type = 'checkbox';
     hideWhoToFollowFeedSwitch.append(hideWhoToFollowFeed, makeElement('span', '', 'Скрывать Who to follow'));
 
+    const feedKeyboardNavigationSwitch = makeElement('label', 'xff-switch xff-feed-keyboard-navigation-switch');
+    const feedKeyboardNavigation = makeElement('input', 'xff-feed-keyboard-navigation');
+    feedKeyboardNavigation.type = 'checkbox';
+    const feedKeyboardNavigationText = makeElement('span', '', 'Навигация на стрелочки');
+    const feedKeyboardNavigationHelp = makeElement('span', 'xff-help-tooltip', '?');
+    const feedKeyboardNavigationHelpText = '[↑] Предыдущий пост\n[↓] Следующий пост\n[←] Не интересно\n[→] Лайк\nТакже поддерживает WASD';
+    feedKeyboardNavigationHelp.setAttribute('title', feedKeyboardNavigationHelpText);
+    feedKeyboardNavigationHelp.setAttribute('tabindex', '0');
+    feedKeyboardNavigationHelp.setAttribute('role', 'img');
+    feedKeyboardNavigationHelp.setAttribute('aria-label', feedKeyboardNavigationHelpText.replace(/\n/g, '. '));
+    feedKeyboardNavigationHelp.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    feedKeyboardNavigationSwitch.append(feedKeyboardNavigation, feedKeyboardNavigationText, feedKeyboardNavigationHelp);
+
     postOtherPanel.append(
       retweetsOnlySwitch,
       retweetsNotInterestedSwitch,
       hideViewedSwitch,
       hideRepliesSwitch,
-      hideWhoToFollowFeedSwitch
+      hideWhoToFollowFeedSwitch,
+      feedKeyboardNavigationSwitch
     );
     otherTab.append(postVerifiedPanel, postNamesPanel, postContentPanel, postOtherPanel);
 
@@ -891,6 +1075,7 @@
       hidePureRetweets: retweetsOnly,
       hidePureRetweetsNotInterested: retweetsNotInterested,
       hideReplies,
+      feedKeyboardNavigation,
       nameFilterEnabled,
       nameFilterKeywordsInput,
       nameFilterNotInterested,
@@ -1042,6 +1227,13 @@
       saveSettings();
       renderUi();
       scheduleScan();
+    });
+
+    ui.feedKeyboardNavigation.addEventListener('change', () => {
+      settings.feedKeyboardNavigationEnabled = ui.feedKeyboardNavigation.checked;
+      keyboardNavigationPost = null;
+      saveSettings();
+      renderUi();
     });
 
     ui.nameFilterEnabled.addEventListener('change', () => {
@@ -1587,6 +1779,27 @@
         margin: 0 !important;
         accent-color: var(--xff-accent);
         cursor: pointer !important;
+      }
+
+      #xff-root .xff-feed-keyboard-navigation-switch {
+        gap: 8px !important;
+      }
+
+      #xff-root .xff-help-tooltip {
+        position: relative !important;
+        display: inline-flex !important;
+        flex: 0 0 16px !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 16px !important;
+        height: 16px !important;
+        border-radius: 50% !important;
+        background: #555 !important;
+        color: #fff !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        cursor: help !important;
       }
 
       #xff-root .xff-switch-child {
@@ -3738,6 +3951,7 @@
     ui.hidePureRetweetsNotInterested.checked = settings.hidePureRetweetsNotInterested;
     ui.hidePureRetweetsNotInterested.disabled = !settings.hidePureRetweets;
     ui.hideReplies.checked = settings.hideReplies;
+    ui.feedKeyboardNavigation.checked = settings.feedKeyboardNavigationEnabled;
     Object.entries(ui.floatingButtonCheckboxes).forEach(([setting, checkbox]) => {
       checkbox.checked = settings[setting];
     });
