@@ -119,6 +119,8 @@
         hideWhatsHappening: false,
         hideWhoToFollow: false,
         hideWhoToFollowFeed: false,
+        hidePureRetweets: false,
+        hidePureRetweetsNotInterested: false,
         hideFloatingGrok: false,
         hideFloatingChat: false,
         hidePostGrokButton: false,
@@ -157,6 +159,8 @@
   let notInterestedInProgress = false;
   let notInterestedMenuObserver = null;
   let notInterestedMenuTimeout = 0;
+  let retweetFeedbackObserver = null;
+  let retweetFeedbackTimeout = 0;
   let userScrollIntentVersion = 0;
     let directNotInterestedStrategyRegistered = false;
     let lastHiddenPostCount = 0;
@@ -185,6 +189,11 @@
       notInterestedMenuObserver = null;
     }
     window.clearTimeout(notInterestedMenuTimeout);
+    if (retweetFeedbackObserver) {
+      retweetFeedbackObserver.disconnect();
+      retweetFeedbackObserver = null;
+    }
+    window.clearTimeout(retweetFeedbackTimeout);
     notInterestedQueue.length = 0;
     window.clearTimeout(scanTimer);
     window.clearTimeout(scanDebounceTimer);
@@ -284,6 +293,8 @@
       hideWhatsHappening: Boolean(value.hideWhatsHappening),
       hideWhoToFollow: Boolean(value.hideWhoToFollow),
       hideWhoToFollowFeed: Boolean(value.hideWhoToFollowFeed),
+      hidePureRetweets: Boolean(value.hidePureRetweets),
+      hidePureRetweetsNotInterested: Boolean(value.hidePureRetweetsNotInterested),
       hideFloatingGrok: Boolean(value.hideFloatingGrok),
       hideFloatingChat: Boolean(value.hideFloatingChat),
       hidePostGrokButton: Boolean(value.hidePostGrokButton),
@@ -642,16 +653,14 @@
 
     const postOtherPanel = makeElement('div', 'xff-subtab-panel xff-post-other-panel');
 
-    const retweetsOnlySwitch = makeElement('label', 'xff-switch xff-switch-parent xff-unimplemented');
-    const retweetsOnly = makeElement('input', 'xff-unimplemented-control');
+    const retweetsOnlySwitch = makeElement('label', 'xff-switch xff-switch-parent');
+    const retweetsOnly = makeElement('input', 'xff-hide-pure-retweets');
     retweetsOnly.type = 'checkbox';
-    retweetsOnly.disabled = true;
     retweetsOnlySwitch.append(retweetsOnly, makeElement('span', '', 'Скрывать чисто репосты'));
 
-    const retweetsNotInterestedSwitch = makeElement('label', 'xff-switch xff-switch-child xff-unimplemented');
-    const retweetsNotInterested = makeElement('input', 'xff-unimplemented-control');
+    const retweetsNotInterestedSwitch = makeElement('label', 'xff-switch xff-switch-child');
+    const retweetsNotInterested = makeElement('input', 'xff-hide-pure-retweets-not-interested');
     retweetsNotInterested.type = 'checkbox';
-    retweetsNotInterested.disabled = true;
     retweetsNotInterestedSwitch.append(retweetsNotInterested, makeElement('span', '', 'Прожимать «Не интересно»'));
 
     const hideViewedSwitch = makeElement('label', 'xff-switch xff-unimplemented');
@@ -840,6 +849,8 @@
       hideWhatsHappening,
       hideWhoToFollow,
       hideWhoToFollowFeed,
+      hidePureRetweets: retweetsOnly,
+      hidePureRetweetsNotInterested: retweetsNotInterested,
       nameFilterEnabled,
       nameFilterKeywordsInput,
       nameFilterNotInterested,
@@ -963,6 +974,20 @@
 
     ui.hideWhoToFollowFeed.addEventListener('change', () => {
       settings.hideWhoToFollowFeed = ui.hideWhoToFollowFeed.checked;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
+
+    ui.hidePureRetweets.addEventListener('change', () => {
+      settings.hidePureRetweets = ui.hidePureRetweets.checked;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
+
+    ui.hidePureRetweetsNotInterested.addEventListener('change', () => {
+      settings.hidePureRetweetsNotInterested = ui.hidePureRetweetsNotInterested.checked;
       saveSettings();
       renderUi();
       scheduleScan();
@@ -2211,6 +2236,16 @@
     return searchRoot.querySelectorAll(POST_SELECTOR);
   }
 
+  function isPureRetweet(post) {
+    const context = post.querySelector('[data-testid="socialContext"]');
+    if (!context) {
+      return false;
+    }
+
+    const label = (context.textContent || '').normalize('NFKC').toLowerCase();
+    return /репост|retweeted|reposted/.test(label);
+  }
+
   function getPostWrapper(post) {
     const xFeedCell = post.closest('[data-testid="cellInnerDiv"]');
     if (xFeedCell) {
@@ -2359,9 +2394,19 @@
       totalCount++;
       syncPostUiForPost(post);
       let hide = post.hasAttribute('data-xff-not-interested')
-        || post.hasAttribute('data-xff-not-interested-pending');
+        || (post.hasAttribute('data-xff-not-interested-pending')
+          && !post.hasAttribute('data-xff-retweet-feedback-pending'));
 
-      if (settings.hideVerified && isVerifiedPost(post)) {
+      if (!hide && settings.hidePureRetweets && isPureRetweet(post)) {
+        if (settings.hidePureRetweetsNotInterested) {
+          const actionQueued = clickNotInterested(post, { showFewerRetweets: true });
+          hide = !actionQueued && !post.hasAttribute('data-xff-retweet-feedback-pending');
+        } else {
+          hide = true;
+        }
+      }
+
+      if (!hide && settings.hideVerified && isVerifiedPost(post)) {
         if (!settings.hideVerifiedUseDB) {
           // Without DB: hide all verified posts
           if (settings.hideVerifiedNotInterested) {
@@ -2527,18 +2572,32 @@
     });
   }
 
-  function clickNotInterested(post) {
-    if (post.getAttribute('data-xff-not-interested') || post.getAttribute('data-xff-not-interested-pending')) {
-      return;
+  function clickNotInterested(post, options = {}) {
+    const showFewerRetweets = Boolean(options.showFewerRetweets);
+    if (showFewerRetweets && post.hasAttribute('data-xff-retweet-feedback-pending')) {
+      return true;
+    }
+    if (post.hasAttribute('data-xff-not-interested')
+      || post.hasAttribute('data-xff-not-interested-pending')
+      || (showFewerRetweets && post.hasAttribute('data-xff-retweet-action-failed'))) {
+      return false;
     }
     const moreBtn = post.querySelector('[data-testid="caret"]')
       || post.querySelector('button[aria-label*="Ещё"], button[aria-label*="More"]');
     if (!moreBtn) {
-      return;
+      return false;
     }
     post.setAttribute('data-xff-not-interested-pending', 'true');
-    notInterestedQueue.push(post);
+    if (showFewerRetweets) {
+      post.setAttribute('data-xff-retweet-feedback-pending', 'true');
+    }
+    notInterestedQueue.push({
+      post,
+      wrapper: getPostWrapper(post),
+      showFewerRetweets,
+    });
     processNotInterestedQueue();
+    return true;
   }
 
   function getDirectNotInterestedAction(post) {
@@ -2580,42 +2639,117 @@
     }
     return null;
   }
-  function processNotInterestedQueue() {
-    if (notInterestedInProgress || isDestroyed) {
-      return;
-    }
-
-    const post = notInterestedQueue.shift();
-    if (!post) {
-      return;
-    }
-    if (!post.isConnected) {
-      post.removeAttribute('data-xff-not-interested-pending');
-      processNotInterestedQueue();
-      return;
-    }
-
-    notInterestedInProgress = true;
+  function waitForRetweetFeedbackAction(wrapper, callback) {
     let finished = false;
 
     const finish = (clicked) => {
       if (finished) return;
       finished = true;
+      if (retweetFeedbackObserver) {
+        retweetFeedbackObserver.disconnect();
+        retweetFeedbackObserver = null;
+      }
+      window.clearTimeout(retweetFeedbackTimeout);
+      retweetFeedbackTimeout = 0;
+      callback(clicked);
+    };
+
+    const tryClickAction = () => {
+      const root = wrapper?.isConnected ? wrapper : document;
+      const action = Array.from(root.querySelectorAll('button, [role="button"]')).find((button) => {
+        const label = `${button.getAttribute('aria-label') || ''} ${button.innerText || button.textContent || ''}`
+          .normalize('NFKC')
+          .replace(/\s+/g, ' ')
+          .toLowerCase();
+        return /показывать меньше репостов от|show fewer reposts from|see fewer reposts from/.test(label);
+      });
+      if (!action) {
+        return false;
+      }
+
+      action.click();
+      finish(true);
+      return true;
+    };
+
+    if (tryClickAction()) {
+      return;
+    }
+
+    retweetFeedbackObserver = new MutationObserver(() => {
+      tryClickAction();
+    });
+    retweetFeedbackObserver.observe(document.body || document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+    retweetFeedbackTimeout = window.setTimeout(() => finish(false), 5000);
+  }
+
+  function processNotInterestedQueue() {
+    if (notInterestedInProgress || isDestroyed) {
+      return;
+    }
+
+    const request = notInterestedQueue.shift();
+    if (!request) {
+      return;
+    }
+    const { post, wrapper, showFewerRetweets } = request;
+    if (!post.isConnected) {
+      post.removeAttribute('data-xff-not-interested-pending');
+      post.removeAttribute('data-xff-retweet-feedback-pending');
+      processNotInterestedQueue();
+      return;
+    }
+
+    notInterestedInProgress = true;
+    let actionFinished = false;
+    let requestCompleted = false;
+
+    const complete = (clicked, feedbackActionClicked = false) => {
+      if (requestCompleted) return;
+      requestCompleted = true;
       if (notInterestedMenuObserver) {
         notInterestedMenuObserver.disconnect();
         notInterestedMenuObserver = null;
       }
       window.clearTimeout(notInterestedMenuTimeout);
       notInterestedMenuTimeout = 0;
-      if (clicked) {
+      if (clicked && !showFewerRetweets) {
         markPostNotInterested(post);
+      } else if (showFewerRetweets && clicked && !feedbackActionClicked && post.isConnected) {
+        post.setAttribute('data-xff-retweet-action-failed', 'true');
+        markPostNotInterested(post);
+      } else if (showFewerRetweets && !clicked) {
+        post.setAttribute('data-xff-retweet-action-failed', 'true');
       }
       post.removeAttribute('data-xff-not-interested-pending');
+      post.removeAttribute('data-xff-retweet-feedback-pending');
       notInterestedInProgress = false;
-      if (clicked) {
+      if (clicked || showFewerRetweets) {
         scheduleScan();
       }
       window.setTimeout(processNotInterestedQueue, 100);
+    };
+
+    const finish = (clicked) => {
+      if (actionFinished) return;
+      actionFinished = true;
+      if (notInterestedMenuObserver) {
+        notInterestedMenuObserver.disconnect();
+        notInterestedMenuObserver = null;
+      }
+      window.clearTimeout(notInterestedMenuTimeout);
+      notInterestedMenuTimeout = 0;
+
+      if (clicked && showFewerRetweets) {
+        waitForRetweetFeedbackAction(wrapper, (feedbackActionClicked) => {
+          complete(true, feedbackActionClicked);
+        });
+        return;
+      }
+      complete(clicked);
     };
 
     const runClassicAction = () => {
@@ -2655,12 +2789,6 @@
           updateStatus(lastHiddenPostCount, lastTotalPostCount);
           console.info('[X Feed Filter] Registered X per-post Not Interested action handler.');
         }
-        if (notInterestedMenuObserver) {
-          notInterestedMenuObserver.disconnect();
-          notInterestedMenuObserver = null;
-        }
-        window.clearTimeout(notInterestedMenuTimeout);
-        notInterestedMenuTimeout = 0;
         finish(true);
         return true;
       };
@@ -2689,11 +2817,7 @@
     if (directAction) {
       try {
         directAction();
-        markPostNotInterested(post);
-        post.removeAttribute('data-xff-not-interested-pending');
-        notInterestedInProgress = false;
-        scheduleScan();
-        window.setTimeout(processNotInterestedQueue, 100);
+        finish(true);
         return;
       } catch (error) {
         console.warn('[X Feed Filter] Direct Not Interested action failed; using the menu.', error);
@@ -3277,6 +3401,9 @@
     ui.hideWhatsHappening.checked = settings.hideWhatsHappening;
     ui.hideWhoToFollow.checked = settings.hideWhoToFollow;
     ui.hideWhoToFollowFeed.checked = settings.hideWhoToFollowFeed;
+    ui.hidePureRetweets.checked = settings.hidePureRetweets;
+    ui.hidePureRetweetsNotInterested.checked = settings.hidePureRetweetsNotInterested;
+    ui.hidePureRetweetsNotInterested.disabled = !settings.hidePureRetweets;
     Object.entries(ui.floatingButtonCheckboxes).forEach(([setting, checkbox]) => {
       checkbox.checked = settings[setting];
     });
