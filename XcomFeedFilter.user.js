@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.2.13
+// @version      1.2.22
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,8 +20,19 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.2.13';
+    const SCRIPT_VERSION = '1.2.22';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
+    const POST_SELECTOR = 'article[data-testid="tweet"], article[role="article"]';
+    const AUTHOR_NAME_SELECTOR = '[data-testid="User-Name"]';
+    const VERIFIED_BADGE_SELECTOR = [
+      '[data-testid^="icon-verified"]',
+      'img[alt*="Verified" i]',
+      'svg[aria-label*="Verified" i]',
+      'img[alt*="Подлинная"]',
+      'svg[aria-label*="Подлинная"]',
+      'img[alt*="вериф" i]',
+      'svg[aria-label*="вериф" i]',
+    ].join(',');
 
     const RECENCY_UNITS = {
         seconds: 1,
@@ -53,6 +64,7 @@
         hidePremium: false,
         hideWhatsHappening: false,
         hideWhoToFollow: false,
+        hideWhoToFollowFeed: false,
         nameFilterEnabled: false,
         nameFilterNotInterested: false,
         nameFilterIncludeReplies: false,
@@ -72,8 +84,21 @@
   let scanDebounceTimer = 0;
   const SCAN_DEBOUNCE_MS = 200;
   let observer = null;
+  let observerTarget = null;
+  let irritantObserver = null;
+  let irritantObserverTarget = null;
+  let irritantObserverTimer = 0;
+  let irritantRetryTimer = 0;
   let ui = null;
   let isDestroyed = false;
+  const notInterestedQueue = [];
+  let notInterestedInProgress = false;
+  let notInterestedMenuObserver = null;
+  let notInterestedMenuTimeout = 0;
+  let userScrollIntentVersion = 0;
+    let directNotInterestedStrategyRegistered = false;
+    let lastHiddenPostCount = 0;
+    let lastTotalPostCount = 0;
 
   boot();
 
@@ -83,10 +108,30 @@
       observer.disconnect();
       observer = null;
     }
+    observerTarget = null;
+    if (irritantObserver) {
+      irritantObserver.disconnect();
+      irritantObserver = null;
+    }
+    irritantObserverTarget = null;
+    window.clearTimeout(irritantObserverTimer);
+    window.clearTimeout(irritantRetryTimer);
+    if (notInterestedMenuObserver) {
+      notInterestedMenuObserver.disconnect();
+      notInterestedMenuObserver = null;
+    }
+    window.clearTimeout(notInterestedMenuTimeout);
+    notInterestedQueue.length = 0;
     window.clearTimeout(scanTimer);
     window.clearTimeout(scanDebounceTimer);
-    window.removeEventListener('yt-navigate-finish', scheduleScan, true);
+    window.removeEventListener('popstate', handleRouteChange, true);
     window.removeEventListener('load', scheduleScan, true);
+    window.removeEventListener('wheel', recordUserScrollIntent, true);
+    window.removeEventListener('touchstart', recordUserScrollIntent, true);
+    window.removeEventListener('touchmove', recordUserScrollIntent, true);
+    window.removeEventListener('pointerdown', recordUserScrollIntent, true);
+    window.removeEventListener('pointermove', recordUserScrollIntent, true);
+    window.removeEventListener('keydown', recordUserScrollIntent, true);
     if (ui && ui.host) {
       ui.host.remove();
       ui = null;
@@ -111,9 +156,33 @@
 
     registerMenuCommand();
     startObserver();
+    startIrritantObserver();
+    scheduleIrritantRetries();
     scheduleScan();
 
+    window.addEventListener('wheel', recordUserScrollIntent, { capture: true, passive: true });
+    window.addEventListener('touchstart', recordUserScrollIntent, { capture: true, passive: true });
+    window.addEventListener('touchmove', recordUserScrollIntent, { capture: true, passive: true });
+    window.addEventListener('pointerdown', recordUserScrollIntent, true);
+    window.addEventListener('pointermove', recordUserScrollIntent, true);
+    window.addEventListener('keydown', recordUserScrollIntent, true);
+
+    window.addEventListener('popstate', handleRouteChange, true);
     window.addEventListener('load', scheduleScan, true);
+  }
+
+  function handleRouteChange() {
+    startObserver();
+    startIrritantObserver();
+    scheduleIrritantRetries();
+    scheduleScan();
+  }
+
+  function recordUserScrollIntent(event) {
+    if (event.type === 'pointermove' && event.buttons === 0) {
+      return;
+    }
+    userScrollIntentVersion += 1;
   }
 
   function loadSettings() {
@@ -123,7 +192,11 @@
       return { ...DEFAULT_SETTINGS };
     }
 
-    const normalized = normalizeSettings({ ...DEFAULT_SETTINGS, ...saved });
+    const savedSettings = { ...DEFAULT_SETTINGS, ...saved };
+    if (!Object.prototype.hasOwnProperty.call(saved, 'hideWhoToFollowFeed')) {
+      savedSettings.hideWhoToFollowFeed = Boolean(saved.hideWhoToFollow);
+    }
+    const normalized = normalizeSettings(savedSettings);
     console.log('[X Filter] loadSettings normalized:', normalized);
     return normalized;
   }
@@ -139,6 +212,7 @@
       hidePremium: Boolean(value.hidePremium),
       hideWhatsHappening: Boolean(value.hideWhatsHappening),
       hideWhoToFollow: Boolean(value.hideWhoToFollow),
+      hideWhoToFollowFeed: Boolean(value.hideWhoToFollowFeed),
       nameFilterEnabled: Boolean(value.nameFilterEnabled),
       nameFilterNotInterested: Boolean(value.nameFilterNotInterested),
       nameFilterIncludeReplies: Boolean(value.nameFilterIncludeReplies),
@@ -468,7 +542,18 @@
     hideReplies.disabled = true;
     hideRepliesSwitch.append(hideReplies, makeElement('span', '', 'Скрывать посты-ответы'));
 
-    postOtherPanel.append(retweetsOnlySwitch, retweetsNotInterestedSwitch, hideViewedSwitch, hideRepliesSwitch);
+    const hideWhoToFollowFeedSwitch = makeElement('label', 'xff-switch');
+    const hideWhoToFollowFeed = makeElement('input', 'xff-hide-who-to-follow-feed');
+    hideWhoToFollowFeed.type = 'checkbox';
+    hideWhoToFollowFeedSwitch.append(hideWhoToFollowFeed, makeElement('span', '', 'Скрывать Who to follow'));
+
+    postOtherPanel.append(
+      retweetsOnlySwitch,
+      retweetsNotInterestedSwitch,
+      hideViewedSwitch,
+      hideRepliesSwitch,
+      hideWhoToFollowFeedSwitch
+    );
     otherTab.append(postVerifiedPanel, postNamesPanel, postContentPanel, postOtherPanel);
 
     const uiFloatingPanel = makeElement('div', 'xff-subtab-panel xff-ui-floating-panel');
@@ -612,6 +697,7 @@
       hidePremium,
       hideWhatsHappening,
       hideWhoToFollow,
+      hideWhoToFollowFeed,
       nameFilterEnabled,
       nameFilterKeywordsInput,
       nameFilterNotInterested,
@@ -698,6 +784,13 @@
 
     ui.hideWhoToFollow.addEventListener('change', () => {
       settings.hideWhoToFollow = ui.hideWhoToFollow.checked;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
+
+    ui.hideWhoToFollowFeed.addEventListener('change', () => {
+      settings.hideWhoToFollowFeed = ui.hideWhoToFollowFeed.checked;
       saveSettings();
       renderUi();
       scheduleScan();
@@ -1120,6 +1213,7 @@
         color: var(--xff-muted) !important;
         font-size: 12px !important;
         line-height: 1.35 !important;
+        white-space: pre-line !important;
       }
 
       #xff-root .xff-name-filter-field {
@@ -1536,15 +1630,19 @@
   }
 
   function startObserver() {
-    const target = document.body || document.documentElement;
+    const target = document.querySelector('main') || document.body || document.documentElement;
     if (!target) {
       window.setTimeout(startObserver, 250);
       return;
     }
 
+    if (observer && observerTarget === target) {
+      return;
+    }
     if (observer) {
       observer.disconnect();
     }
+    observerTarget = target;
 
     observer = new MutationObserver((mutations) => {
       if (isDestroyed) return;
@@ -1553,11 +1651,11 @@
         if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
           for (const node of mutation.addedNodes) {
             if (node.nodeType === Node.ELEMENT_NODE) {
-              if (node.matches && node.matches('article')) {
+              if (node.matches && node.matches(POST_SELECTOR)) {
                 shouldScan = true;
                 break;
               }
-              if (node.querySelector && node.querySelector('article')) {
+              if (node.querySelector && node.querySelector(POST_SELECTOR)) {
                 shouldScan = true;
                 break;
               }
@@ -1577,14 +1675,124 @@
     });
   }
 
+  function startIrritantObserver() {
+    const target = document.body || document.documentElement;
+    if (!target) {
+      window.setTimeout(startIrritantObserver, 250);
+      return;
+    }
+
+    if (irritantObserver && irritantObserverTarget === target) {
+      return;
+    }
+    if (irritantObserver) {
+      irritantObserver.disconnect();
+    }
+    irritantObserverTarget = target;
+    irritantObserver = new MutationObserver((mutations) => {
+      if (isDestroyed || !mutations.some(isIrritantMutation)) {
+        return;
+      }
+
+      window.clearTimeout(irritantObserverTimer);
+      irritantObserverTimer = window.setTimeout(() => {
+        if (!isDestroyed) {
+          hideIrritantElements();
+        }
+      }, 80);
+    });
+    irritantObserver.observe(target, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+  }
+
+  function isIrritantMutation(mutation) {
+    if (mutation.type === 'characterData') {
+      return isIrritantHeading(mutation.target.parentElement?.closest('[role="heading"], h1, h2, h3, h4, h5, h6'));
+    }
+
+    for (const node of mutation.addedNodes) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (isIrritantHeading(node.parentElement?.closest('[role="heading"], h1, h2, h3, h4, h5, h6'))) {
+          return true;
+        }
+        continue;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        continue;
+      }
+
+      if (node.matches('[data-testid="sidebarColumn"], [data-testid="trend"], [data-testid="UserCell"], aside[role="complementary"]')
+        || node.querySelector('[data-testid="sidebarColumn"], [data-testid="trend"], [data-testid="UserCell"], aside[role="complementary"]')) {
+        return true;
+      }
+
+      const headings = [];
+      if (node.matches('[role="heading"], h1, h2, h3, h4, h5, h6')) {
+        headings.push(node);
+      }
+      headings.push(...node.querySelectorAll('[role="heading"], h1, h2, h3, h4, h5, h6'));
+      if (headings.some(isIrritantHeading)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function isIrritantHeading(heading) {
+    if (!heading) {
+      return false;
+    }
+    const text = (heading.textContent || '').trim().toLowerCase();
+    return [
+      'что происходит',
+      "what's happening",
+      'what’s happening',
+      'кого читать',
+      'who to follow',
+    ].some((label) => text === label || text.startsWith(`${label} `));
+  }
+
+  function scheduleIrritantRetries() {
+    window.clearTimeout(irritantRetryTimer);
+    let attempts = 0;
+    const maxAttempts = 30;
+    const retryInterval = 500;
+    const retry = () => {
+      if (isDestroyed) {
+        return;
+      }
+      hideIrritantElements();
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        irritantRetryTimer = window.setTimeout(retry, retryInterval);
+      }
+    };
+
+    irritantRetryTimer = window.setTimeout(retry, retryInterval);
+  }
+
+  function getPostElements(root) {
+    const searchRoot = root || document;
+    return searchRoot.querySelectorAll(POST_SELECTOR);
+  }
+
   function getPostWrapper(post) {
+    const xFeedCell = post.closest('[data-testid="cellInnerDiv"]');
+    if (xFeedCell) {
+      return xFeedCell;
+    }
+
+    // Fallback for X layouts that do not expose cellInnerDiv.
     let current = post;
     while (current && current.parentElement && current.parentElement.parentElement) {
       const parent = current.parentElement;
       const grandParent = parent.parentElement;
       let articleWrapperCount = 0;
       for (const child of grandParent.children) {
-        if (child.querySelector('article')) {
+        if (child.querySelector(POST_SELECTOR)) {
           articleWrapperCount++;
         }
       }
@@ -1602,15 +1810,18 @@
     }
     if (isDestroyed) return;
 
-    const posts = document.querySelectorAll('article');
+    const feedRoot = document.querySelector('main') || document;
+    const posts = getPostElements(feedRoot);
     console.log('[X Filter] scanPage found', posts.length, 'posts');
 
     let hiddenCount = 0;
     let totalCount = 0;
+    const visibilityChanges = [];
 
     for (const post of posts) {
       totalCount++;
-      let hide = false;
+      let hide = post.hasAttribute('data-xff-not-interested')
+        || post.hasAttribute('data-xff-not-interested-pending');
 
       if (settings.hideVerified && isVerifiedPost(post)) {
         if (!settings.hideVerifiedUseDB) {
@@ -1691,42 +1902,314 @@
         }
       }
 
+      const shouldUnhide = !hide
+        && !post.hasAttribute('data-xff-not-interested')
+        && (!settings.nameFilterNotInterested || !isNameFiltered(post, settings.nameFilterIncludeReplies));
+      const wrapper = getPostWrapper(post);
+      visibilityChanges.push({ post, wrapper, hide, shouldUnhide });
       if (hide) {
-        const wrapper = getPostWrapper(post);
-        wrapper.classList.add('xff-post-wrapper');
-        wrapper.setAttribute('data-xff-hidden', 'true');
         hiddenCount++;
-      } else if (!settings.nameFilterNotInterested || !isNameFiltered(post, settings.nameFilterIncludeReplies)) {
-        const wrapper = getPostWrapper(post);
+      }
+    }
+
+    const wrappersToHide = new Set(
+      visibilityChanges.filter((change) => change.hide).map((change) => change.wrapper)
+    );
+    const wrappersToUnhide = new Set(
+      visibilityChanges.filter((change) => change.shouldUnhide).map((change) => change.wrapper)
+    );
+    const visibilityWillChange = Array.from(wrappersToHide)
+      .some((wrapper) => !wrapper.hasAttribute('data-xff-hidden'))
+      || Array.from(wrappersToUnhide)
+        .some((wrapper) => !wrappersToHide.has(wrapper) && wrapper.hasAttribute('data-xff-hidden'));
+    const scrollAnchor = visibilityWillChange
+      ? captureScrollAnchor(visibilityChanges, wrappersToHide)
+      : null;
+
+    for (const wrapper of wrappersToHide) {
+      wrapper.classList.add('xff-post-wrapper');
+      wrapper.setAttribute('data-xff-hidden', 'true');
+    }
+    for (const wrapper of wrappersToUnhide) {
+      if (!wrappersToHide.has(wrapper)) {
         wrapper.removeAttribute('data-xff-hidden');
       }
     }
+
+    restoreScrollAnchor(scrollAnchor);
 
     updateStatus(hiddenCount, totalCount);
 
     hideIrritantElements();
   }
 
-  function clickNotInterested(post) {
-    if (post.getAttribute('data-xff-not-interested')) {
+  function captureScrollAnchor(visibilityChanges, wrappersToHide) {
+    for (const { post, wrapper, hide } of visibilityChanges) {
+      if (hide || wrappersToHide.has(wrapper) || wrapper.hasAttribute('data-xff-hidden')) {
+        continue;
+      }
+      const rect = post.getBoundingClientRect();
+      if (rect.bottom > 0) {
+        return {
+          post,
+          wrapper,
+          top: rect.top,
+          userIntentVersion: userScrollIntentVersion,
+        };
+      }
+    }
+    return null;
+  }
+
+  function restoreScrollAnchor(anchor) {
+    if (!anchor) {
       return;
     }
-    const moreBtn = post.querySelector('button[aria-label*="Ещё"], button[aria-label*="More"]');
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (isDestroyed
+          || anchor.userIntentVersion !== userScrollIntentVersion
+          || !anchor.post.isConnected
+          || anchor.wrapper.hasAttribute('data-xff-hidden')) {
+          return;
+        }
+
+        const currentTop = anchor.post.getBoundingClientRect().top;
+        const scrollDelta = currentTop - anchor.top;
+        if (Math.abs(scrollDelta) < 1) {
+          return;
+        }
+
+        const scrollRoot = document.scrollingElement;
+        if (scrollRoot) {
+          scrollRoot.scrollTop += scrollDelta;
+        }
+      });
+    });
+  }
+
+  function clickNotInterested(post) {
+    if (post.getAttribute('data-xff-not-interested') || post.getAttribute('data-xff-not-interested-pending')) {
+      return;
+    }
+    const moreBtn = post.querySelector('[data-testid="caret"]')
+      || post.querySelector('button[aria-label*="Ещё"], button[aria-label*="More"]');
     if (!moreBtn) {
       return;
     }
-    moreBtn.click();
-    post.setAttribute('data-xff-not-interested', 'true');
-    window.setTimeout(() => {
-      const menuItems = document.querySelectorAll('[role="menuitem"]');
-      for (const mi of menuItems) {
-        const text = (mi.textContent || '').toLowerCase();
-        if (text.includes('не интересна') || text.includes('not interested')) {
-          mi.click();
-          break;
-        }
+    post.setAttribute('data-xff-not-interested-pending', 'true');
+    notInterestedQueue.push(post);
+    processNotInterestedQueue();
+  }
+
+  function getDirectNotInterestedAction(post) {
+    const moreButton = post.querySelector('[data-testid="caret"]')
+      || post.querySelector('button[aria-label*="Ещё"], button[aria-label*="More"]');
+    if (!moreButton) {
+      return null;
+    }
+
+    const fiberKey = Object.keys(moreButton).find((key) => key.startsWith('__reactFiber$'));
+    let fiber = fiberKey ? moreButton[fiberKey] : null;
+    for (let depth = 0; fiber && depth < 30; depth += 1, fiber = fiber.return) {
+      const renderMenu = fiber.memoizedProps?.renderMenu || fiber.pendingProps?.renderMenu;
+      if (typeof renderMenu !== 'function') {
+        continue;
       }
-    }, 800);
+
+      try {
+        const menuShell = renderMenu(() => {});
+        const renderItems = menuShell?.props?.children;
+        const menu = typeof renderItems === 'function'
+          ? renderItems({ downloadLink: null })
+          : null;
+        const items = menu?.props?.actionItems;
+        if (!Array.isArray(items)) {
+          continue;
+        }
+
+        const notInterestedItem = items.find((item) => {
+          const label = String(item?.text || '').normalize('NFKC').toLowerCase();
+          return /не\s*интерес|not\s+interested/.test(label);
+        });
+        if (typeof notInterestedItem?.onClick === 'function') {
+          return notInterestedItem.onClick;
+        }
+      } catch (_) {
+        // X can change its menu internals; the visible menu remains the fallback.
+      }
+    }
+    return null;
+  }
+  function processNotInterestedQueue() {
+    if (notInterestedInProgress || isDestroyed) {
+      return;
+    }
+
+    const post = notInterestedQueue.shift();
+    if (!post) {
+      return;
+    }
+    if (!post.isConnected) {
+      post.removeAttribute('data-xff-not-interested-pending');
+      processNotInterestedQueue();
+      return;
+    }
+
+    notInterestedInProgress = true;
+    let finished = false;
+
+    const finish = (clicked) => {
+      if (finished) return;
+      finished = true;
+      if (notInterestedMenuObserver) {
+        notInterestedMenuObserver.disconnect();
+        notInterestedMenuObserver = null;
+      }
+      window.clearTimeout(notInterestedMenuTimeout);
+      notInterestedMenuTimeout = 0;
+      if (clicked) {
+        markPostNotInterested(post);
+      }
+      post.removeAttribute('data-xff-not-interested-pending');
+      notInterestedInProgress = false;
+      if (clicked) {
+        scheduleScan();
+      }
+      window.setTimeout(processNotInterestedQueue, 100);
+    };
+
+    const runClassicAction = () => {
+      const moreBtn = post.querySelector('[data-testid="caret"]')
+        || post.querySelector('button[aria-label*="Ещё"], button[aria-label*="More"]');
+      if (!moreBtn) {
+        finish(false);
+        return;
+      }
+
+      const findNotInterestedMenuItem = () => {
+        const menus = Array.from(document.querySelectorAll('[role="menu"]'));
+        for (let index = menus.length - 1; index >= 0; index--) {
+          const menuItems = menus[index].querySelectorAll('[role="menuitem"]');
+          for (const item of menuItems) {
+            const label = `${item.getAttribute('aria-label') || ''} ${item.textContent || ''}`
+              .normalize('NFKC')
+              .toLowerCase();
+            if (/не\s*интерес|not\s+interested/.test(label)) {
+              return item;
+            }
+          }
+        }
+        return null;
+      };
+
+      const tryClickNotInterested = () => {
+        const menuItem = findNotInterestedMenuItem();
+        if (!menuItem) {
+          return false;
+        }
+
+        const directActionAvailable = typeof getDirectNotInterestedAction(post) === 'function';
+        menuItem.click();
+        if (directActionAvailable && !directNotInterestedStrategyRegistered) {
+          directNotInterestedStrategyRegistered = true;
+          updateStatus(lastHiddenPostCount, lastTotalPostCount);
+          console.info('[X Feed Filter] Registered X per-post Not Interested action handler.');
+        }
+        if (notInterestedMenuObserver) {
+          notInterestedMenuObserver.disconnect();
+          notInterestedMenuObserver = null;
+        }
+        window.clearTimeout(notInterestedMenuTimeout);
+        notInterestedMenuTimeout = 0;
+        finish(true);
+        return true;
+      };
+
+      moreBtn.click();
+      if (tryClickNotInterested()) {
+        return;
+      }
+
+      notInterestedMenuObserver = new MutationObserver(() => {
+        tryClickNotInterested();
+      });
+      notInterestedMenuObserver.observe(document.body || document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+      notInterestedMenuTimeout = window.setTimeout(() => finish(false), 2000);
+    };
+
+    if (!directNotInterestedStrategyRegistered) {
+      runClassicAction();
+      return;
+    }
+
+    const directAction = getDirectNotInterestedAction(post);
+    if (directAction) {
+      try {
+        directAction();
+        markPostNotInterested(post);
+        post.removeAttribute('data-xff-not-interested-pending');
+        notInterestedInProgress = false;
+        scheduleScan();
+        window.setTimeout(processNotInterestedQueue, 100);
+        return;
+      } catch (error) {
+        console.warn('[X Feed Filter] Direct Not Interested action failed; using the menu.', error);
+      }
+    }
+
+    runClassicAction();
+  }
+
+  function hidePostForNotInterested(post) {
+    setPostWrapperHiddenWithScroll(post);
+  }
+
+  function setPostWrapperHiddenWithScroll(post, beforeHide) {
+    const wrapper = getPostWrapper(post);
+    if (!wrapper) {
+      return;
+    }
+
+    const scrollAnchor = wrapper.hasAttribute('data-xff-hidden')
+      ? null
+      : captureScrollAnchorExcludingWrappers(new Set([wrapper]));
+    if (typeof beforeHide === 'function') {
+      beforeHide();
+    }
+    wrapper.classList.add('xff-post-wrapper');
+    wrapper.setAttribute('data-xff-hidden', 'true');
+    restoreScrollAnchor(scrollAnchor);
+  }
+
+  function captureScrollAnchorExcludingWrappers(excludedWrappers) {
+    const feedRoot = document.querySelector('main') || document;
+    const excluded = excludedWrappers instanceof Set ? excludedWrappers : new Set([excludedWrappers]);
+    for (const post of getPostElements(feedRoot)) {
+      const wrapper = getPostWrapper(post);
+      if (excluded.has(wrapper) || wrapper.hasAttribute('data-xff-hidden')) {
+        continue;
+      }
+      const rect = post.getBoundingClientRect();
+      if (rect.bottom > 0) {
+        return {
+          post,
+          wrapper,
+          top: rect.top,
+          userIntentVersion: userScrollIntentVersion,
+        };
+      }
+    }
+    return null;
+  }
+
+  function markPostNotInterested(post) {
+    post.setAttribute('data-xff-not-interested', 'true');
+    hidePostForNotInterested(post);
   }
 
   function addDbActionButtons(post, nick) {
@@ -1786,9 +2269,10 @@
       btnFilter.style.borderColor = '#ff4444';
     });
     btnFilter.addEventListener('click', () => {
-      setDbUserAction(nick, 'Фильтровать');
-      removeDbActionButtons(post);
-      wrapper.setAttribute('data-xff-hidden', 'true');
+      setPostWrapperHiddenWithScroll(post, () => {
+        setDbUserAction(nick, 'Фильтровать');
+        removeDbActionButtons(post);
+      });
     });
 
     const btnExcept = makeElement('div', 'xff-db-btn xff-db-btn-except', 'Пощадить галочника');
@@ -1833,7 +2317,7 @@
     btnBar.append(btnFilter, btnExcept);
 
     // Insert button bar at the very top of the wrapper, before article content
-    const article = wrapper.querySelector('article');
+    const article = wrapper.querySelector(POST_SELECTOR);
     if (article) {
       article.parentNode.insertBefore(btnBar, article);
     } else {
@@ -1864,79 +2348,71 @@
   }
 
   function isVerifiedPost(post) {
-    // Check for verified badge inside author name link (the post author is verified)
-    const authorLinks = post.querySelectorAll('a[href^="/"]:not([href*="/status/"])');
-    let verifiedInAuthor = false;
-    for (const link of authorLinks) {
-      if (link.querySelector(
-        'img[alt*="Подлинная"], img[alt*="Verified"], img[alt*="verified"], img[alt*="вериф"], svg[aria-label*="Подлинная"], svg[aria-label*="Verified"], svg[aria-label*="verified"], svg[aria-label*="вериф"], [data-testid="icon-verified"]'
-      )) {
-        verifiedInAuthor = true;
-        break;
-      }
-    }
-
-    // Check for verified badge anywhere in the article (e.g. in reply context or quoted content)
-    const verifiedAnywhere = post.querySelector(
-      'img[alt*="Подлинная учетная запись"], img[alt*="Подлинная"], img[alt*="Verified"], img[alt*="verified"], img[alt*="вериф"], svg[aria-label*="Подлинная"], svg[aria-label*="Verified"], svg[aria-label*="verified"], svg[aria-label*="вериф"], [data-testid="icon-verified"]'
-    );
-
-    if (settings.hideVerifiedReplies) {
-      return verifiedAnywhere !== null;
-    }
-
-    // Also check if we can find verified author nicks (handles badges not inside <a> tags, e.g. VRChat)
-    const authorNicks = getVerifiedAuthorNick(post);
-    if (authorNicks.length > 0) {
-      return true;
-    }
-
-    return verifiedInAuthor;
+    return getVerifiedAuthorElements(post).length > 0;
   }
 
-  function getVerifiedAuthorNick(post) {
-    const verifiedElements = post.querySelectorAll(
-      'img[alt*="Подлинная"], img[alt*="Verified"], img[alt*="verified"], img[alt*="вериф"], svg[aria-label*="Подлинная"], svg[aria-label*="Verified"], svg[aria-label*="verified"], svg[aria-label*="вериф"], [data-testid="icon-verified"]'
-    );
-
-    if (verifiedElements.length === 0) {
-      return [];
+  function getAuthorNameElements(post) {
+    const authorNameElements = Array.from(post.querySelectorAll(AUTHOR_NAME_SELECTOR));
+    if (authorNameElements.length > 0) {
+      return authorNameElements;
     }
 
-    const nicks = [];
-    const seen = new Set();
+    // Fallback for layouts without X's User-Name test id.
+    return Array.from(post.querySelectorAll('a[href^="/"]:not([href*="/status/"])'))
+      .filter((link) => (link.textContent || '').trim().length > 0);
+  }
 
-    // 1. Extract from <a href="/username"> links
-    const links = post.querySelectorAll('a[href^="/"]:not([href*="/status/"])');
+  function hasVerifiedBadge(element) {
+    if (!element) {
+      return false;
+    }
+    return Boolean(
+      (element.matches && element.matches(VERIFIED_BADGE_SELECTOR))
+      || (element.querySelector && element.querySelector(VERIFIED_BADGE_SELECTOR))
+    );
+  }
+
+  function getVerifiedAuthorElements(post) {
+    const authorElements = getAuthorNameElements(post);
+    const relevantAuthors = settings.hideVerifiedReplies
+      ? authorElements
+      : authorElements.slice(0, 1);
+    return relevantAuthors.filter(hasVerifiedBadge);
+  }
+
+  function getAuthorNick(authorElement) {
+    const links = Array.from(authorElement.querySelectorAll('a[href]'));
+    const skipPaths = new Set([
+      'i', 'hashtag', 'search', 'compose', 'settings', 'messages',
+      'notifications', 'home', 'explore', 'login', 'signup',
+    ]);
+
     for (const link of links) {
-      const href = link.getAttribute('href');
-      if (href && href.startsWith('/') && !href.includes('/status/')) {
-        const parts = href.split('/').filter((p) => p.length > 0);
-        if (parts.length > 0) {
-          const nick = parts[0];
-          // Skip non-profile paths
-          const skipPaths = ['i', 'hashtag', 'search', 'compose', 'settings', 'messages', 'notifications', 'home', 'explore', 'login', 'signup'];
-          if (!skipPaths.includes(nick) && !seen.has(nick)) {
-            seen.add(nick);
-            nicks.push(nick);
-          }
+      const href = link.getAttribute('href') || '';
+      const profileMatch = href.match(/^\/([^/?#]+)\/?$/);
+      if (profileMatch && !skipPaths.has(profileMatch[1].toLowerCase())) {
+        try {
+          return decodeURIComponent(profileMatch[1]);
+        } catch (_) {
+          return profileMatch[1];
         }
       }
     }
 
-    // 2. Extract @username from text content (e.g. "yue@yueko__·23 окт.")
-    // This catches cases where <a> tag structure is different
-    const textContent = post.textContent || '';
-    const textRegex = /@([\w-]+)(?=[\s·•\-]|$)/g;
-    let textMatch;
-    while ((textMatch = textRegex.exec(textContent)) !== null) {
-      const nick = textMatch[1];
-      if (!seen.has(nick)) {
+    const handleMatch = (authorElement.textContent || '').match(/@([a-z\d_]+)/i);
+    return handleMatch ? handleMatch[1] : null;
+  }
+
+  function getVerifiedAuthorNick(post) {
+    const nicks = [];
+    const seen = new Set();
+    for (const authorElement of getVerifiedAuthorElements(post)) {
+      const nick = getAuthorNick(authorElement);
+      if (nick && !seen.has(nick)) {
         seen.add(nick);
         nicks.push(nick);
       }
     }
-
     return nicks;
   }
 
@@ -1950,13 +2426,13 @@
       return false;
     }
 
-    const authorLinks = post.querySelectorAll('a[href^="/"]:not([href*="/status/"])');
-    const linksToCheck = includeReplies 
-      ? Array.from(authorLinks)
-      : Array.from(authorLinks).filter((l) => l.textContent.trim().length > 0);
-    for (const link of linksToCheck) {
-      const name = (link.textContent || '').trim();
-      const imgs = link.querySelectorAll('img');
+    const authorNameElements = getAuthorNameElements(post);
+    const authorElementsToCheck = includeReplies
+      ? authorNameElements
+      : authorNameElements.slice(0, 1);
+    for (const authorElement of authorElementsToCheck) {
+      const name = (authorElement.textContent || '').trim();
+      const imgs = authorElement.querySelectorAll('img');
       const altTexts = Array.from(imgs).map((img) => img.getAttribute('alt') || '').join(' ');
       const fullText = (name + ' ' + altTexts).trim();
       for (const keyword of keywords) {
@@ -1967,10 +2443,23 @@
     }
 
     if (includeReplies) {
-      const postText = (post.textContent || '').trim();
-      for (const keyword of keywords) {
-        if (postText.toLowerCase().includes(keyword.toLowerCase())) {
-          return true;
+      const contentElements = post.querySelectorAll('[data-testid="tweetText"]');
+      if (contentElements.length > 0) {
+        for (const contentElement of contentElements) {
+          const contentText = (contentElement.textContent || '').trim().toLowerCase();
+          for (const keyword of keywords) {
+            if (contentText.includes(keyword.toLowerCase())) {
+              return true;
+            }
+          }
+        }
+      } else {
+        // Older X layouts do not expose tweetText; keep the previous broad fallback there.
+        const postText = (post.textContent || '').trim().toLowerCase();
+        for (const keyword of keywords) {
+          if (postText.includes(keyword.toLowerCase())) {
+            return true;
+          }
         }
       }
 
@@ -1993,8 +2482,15 @@
     if (!timeEl) {
       return null;
     }
-    const text = timeEl.textContent || timeEl.getAttribute('datetime') || '';
-    return parseAgeText(text);
+    const datetime = timeEl.getAttribute('datetime') || timeEl.dateTime || '';
+    const timestamp = Date.parse(datetime);
+    if (Number.isFinite(timestamp)) {
+      const age = (Date.now() - timestamp) / 1000;
+      if (age >= 0) {
+        return age;
+      }
+    }
+    return parseAgeText(timeEl.textContent || '');
   }
 
   const RU_UNIT_ALIASES = {
@@ -2242,6 +2738,7 @@
     ui.hidePremium.checked = settings.hidePremium;
     ui.hideWhatsHappening.checked = settings.hideWhatsHappening;
     ui.hideWhoToFollow.checked = settings.hideWhoToFollow;
+    ui.hideWhoToFollowFeed.checked = settings.hideWhoToFollowFeed;
     ui.nameFilterEnabled.checked = settings.nameFilterEnabled;
     ui.nameFilterNotInterested.checked = settings.nameFilterNotInterested;
     ui.nameFilterNotInterested.disabled = !settings.nameFilterEnabled;
@@ -2264,11 +2761,14 @@
   }
 
   function updateStatus(hiddenCount, totalCount) {
+    lastHiddenPostCount = hiddenCount;
+    lastTotalPostCount = totalCount;
     if (!ui || !ui.status) {
       return;
     }
 
-    ui.status.textContent = `Всего постов: ${totalCount}. Скрыто: ${hiddenCount}.`;
+    const handlerDetected = directNotInterestedStrategyRegistered ? 'True' : 'False';
+    ui.status.textContent = `Всего постов: ${totalCount}. Скрыто: ${hiddenCount}.\nNot Interested Detected: ${handlerDetected}`;
   }
 
   function renderDbTable() {
@@ -2342,63 +2842,148 @@
   }
 
   function hideIrritantElements() {
-    if (settings.hidePremium) {
-      document.querySelectorAll('aside[aria-label*="Подпишитесь на Premium"], aside[aria-label*="Premium"]').forEach(el => {
-        const parent = el.parentElement;
-        if (parent) {
-          parent.setAttribute('data-xff-hidden', 'true');
-        }
-      });
-    } else {
-      document.querySelectorAll('aside[aria-label*="Подпишитесь на Premium"], aside[aria-label*="Premium"]').forEach(el => {
-        const parent = el.parentElement;
-        if (parent) {
-          parent.removeAttribute('data-xff-hidden');
-        }
-      });
-    }
-
-    if (settings.hideWhatsHappening) {
-      findElementsByHeading('Что происходит', 8).forEach(el => {
-        const parent = el.parentElement;
-        if (parent) {
-          parent.setAttribute('data-xff-hidden', 'true');
-        }
-      });
-    } else {
-      findElementsByHeading('Что происходит', 8).forEach(el => {
-        const parent = el.parentElement;
-        if (parent) {
-          parent.removeAttribute('data-xff-hidden');
-        }
-      });
-    }
-
-    if (settings.hideWhoToFollow) {
-      document.querySelectorAll('aside[aria-label*="Кого читать"]').forEach(el => {
-        const parent = el.parentElement;
-        if (parent) {
-          parent.setAttribute('data-xff-hidden', 'true');
-        }
-      });
-      findElementsByHeading('Who to follow', 5).forEach(el => el.setAttribute('data-xff-hidden', 'true'));
-    } else {
-      document.querySelectorAll('aside[aria-label*="Кого читать"]').forEach(el => {
-        const parent = el.parentElement;
-        if (parent) {
-          parent.removeAttribute('data-xff-hidden');
-        }
-      });
-      findElementsByHeading('Who to follow', 5).forEach(el => el.removeAttribute('data-xff-hidden'));
-    }
+    setElementsHidden(getPremiumPanels(), settings.hidePremium);
+    setElementsHidden(getWhatsHappeningPanels(), settings.hideWhatsHappening);
+    setElementsHidden(getWhoToFollowPanels(), settings.hideWhoToFollow);
+    setElementsHidden(getWhoToFollowFeedModules(), settings.hideWhoToFollowFeed, false);
   }
 
-  function findElementsByHeading(headingText, maxDepth) {
-    const elements = [];
-    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  function setElementsHidden(elements, shouldHide, expandToCard = true) {
+    const panels = Array.from(elements, (element) => ({
+      element,
+      target: expandToCard ? getPanelCardElement(element) : element,
+    }));
+    const targets = new Set(panels.map((panel) => panel.target));
+    const feedTargets = new Set(Array.from(targets).filter((target) => target.closest('main')));
+    const visibilityWillChange = Array.from(feedTargets).some((target) => {
+      return shouldHide
+        ? !target.hasAttribute('data-xff-hidden')
+        : target.hasAttribute('data-xff-hidden');
+    });
+    const scrollAnchor = visibilityWillChange
+      ? captureScrollAnchorExcludingWrappers(feedTargets)
+      : null;
+
+    if (shouldHide) {
+      for (const target of targets) {
+        target.setAttribute('data-xff-hidden', 'true');
+      }
+      restoreScrollAnchor(scrollAnchor);
+      return;
+    }
+
+    const sidebar = getSidebarRoot();
+    for (const { element, target } of panels) {
+      for (let current = element; current; current = current.parentElement) {
+        current.removeAttribute('data-xff-hidden');
+        if (current === target || current === sidebar) {
+          break;
+        }
+      }
+    }
+    restoreScrollAnchor(scrollAnchor);
+  }
+
+  function getPanelCardElement(element) {
+    const sidebar = getSidebarRoot();
+    for (let current = element; current && current !== sidebar; current = current.parentElement) {
+      const style = window.getComputedStyle(current);
+      const hasRoundedCorners = [
+        style.borderTopLeftRadius,
+        style.borderTopRightRadius,
+        style.borderBottomLeftRadius,
+        style.borderBottomRightRadius,
+      ].some((radius) => Number.parseFloat(radius) > 0);
+      const hasBorder = ['Top', 'Right', 'Bottom', 'Left'].some((side) => {
+        return Number.parseFloat(style[`border${side}Width`]) > 0
+          && style[`border${side}Style`] !== 'none';
+      });
+      if (hasRoundedCorners && hasBorder) {
+        return current;
+      }
+    }
+    return element;
+  }
+
+  function getSidebarRoot() {
+    return document.querySelector('[data-testid="sidebarColumn"]') || document;
+  }
+
+  function getPremiumPanels() {
+    const sidebar = getSidebarRoot();
+    const complementaryPanels = Array.from(sidebar.querySelectorAll('aside[role="complementary"]'));
+    const byLink = complementaryPanels.filter((panel) => {
+      return Array.from(panel.querySelectorAll('a[href]')).some((link) => {
+        try {
+          return new URL(link.href, window.location.origin).pathname.startsWith('/i/premium_sign_up');
+        } catch (_) {
+          return (link.getAttribute('href') || '').startsWith('/i/premium_sign_up');
+        }
+      });
+    });
+    if (byLink.length > 0) {
+      return byLink;
+    }
+    return Array.from(sidebar.querySelectorAll('aside[aria-label*="Premium" i], aside[aria-label*="Подпишитесь на Premium"]'));
+  }
+
+  function getWhatsHappeningPanels() {
+    const sidebar = getSidebarRoot();
+    const trends = Array.from(sidebar.querySelectorAll('[data-testid="trend"]'));
+    if (trends.length > 0) {
+      for (let candidate = trends[0].parentElement; candidate && candidate !== sidebar; candidate = candidate.parentElement) {
+        const candidateTrendCount = candidate.querySelectorAll('[data-testid="trend"]').length;
+        if (candidateTrendCount === trends.length && !candidate.querySelector('[data-testid="UserCell"]')) {
+          return [candidate];
+        }
+      }
+    }
+
+    return findElementsByHeading(['Что происходит', "What's happening", 'What’s happening'], 8);
+  }
+
+  function getWhoToFollowPanels() {
+    const sidebar = getSidebarRoot();
+    const complementaryPanels = Array.from(sidebar.querySelectorAll('aside[role="complementary"]'));
+    const byUserCells = complementaryPanels.filter((panel) => panel.querySelector('[data-testid="UserCell"]'));
+    if (byUserCells.length > 0) {
+      return byUserCells;
+    }
+    return Array.from(sidebar.querySelectorAll(
+      'aside[aria-label*="Кого читать"], aside[aria-label*="Who to follow" i]'
+    ));
+  }
+
+  function getWhoToFollowFeedModules() {
+    const sidebar = document.querySelector('[data-testid="sidebarColumn"]');
+    const headings = Array.from(document.querySelectorAll('[role="heading"], h1, h2, h3, h4, h5, h6'));
+    const modules = new Set();
     for (const heading of headings) {
-      const text = (heading.textContent || '').trim();
-      if (text === headingText || text.startsWith(headingText)) {
+      const text = (heading.textContent || '').trim().toLowerCase();
+      if (text !== 'who to follow' && text !== 'кого читать') {
+        continue;
+      }
+      if (sidebar?.contains(heading) || heading.closest('aside[role="complementary"]')) {
+        continue;
+      }
+
+      const feedCell = heading.closest('[data-testid="cellInnerDiv"]');
+      if (feedCell) {
+        modules.add(feedCell);
+      }
+    }
+    return Array.from(modules);
+  }
+
+  function findElementsByHeading(headingTexts, maxDepth) {
+    const elements = [];
+    const targetTexts = (Array.isArray(headingTexts) ? headingTexts : [headingTexts])
+      .map((text) => String(text).trim().toLowerCase())
+      .filter(Boolean);
+    const headings = document.querySelectorAll('[role="heading"], h1, h2, h3, h4, h5, h6');
+    for (const heading of headings) {
+      const text = (heading.textContent || '').trim().toLowerCase();
+      if (targetTexts.some((targetText) => text === targetText || text.startsWith(targetText))) {
         let parent = heading.parentElement;
         let depth = 0;
         let found = false;
