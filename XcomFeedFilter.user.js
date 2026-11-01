@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.2.22
+// @version      1.2.23
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.2.22';
+    const SCRIPT_VERSION = '1.2.23';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
     const POST_SELECTOR = 'article[data-testid="tweet"], article[role="article"]';
     const AUTHOR_NAME_SELECTOR = '[data-testid="User-Name"]';
@@ -613,7 +613,11 @@
 
     uiPostElementsPanel.append(
       makeUnavailableNote('Скрывать следующие кнопки:'),
-      makeUnavailableSwitch('Кнопка Grok')
+      makeUnavailableSwitch('Кнопка Grok'),
+      makeUnavailableNote('Добавить следующие кнопки:'),
+      makeUnavailableSwitch('Дизлайк'),
+      makeUnavailableSwitch('Игнор'),
+      makeUnavailableSwitch('Чёрный список')
     );
     irritantsTab.append(uiFloatingPanel, uiSidePanelsPanel, uiMenuButtonsPanel, uiPostElementsPanel);
 
