@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.3.5
+// @version      1.3.7
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.3.5';
+    const SCRIPT_VERSION = '1.3.7';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
     const POST_SELECTOR = 'article[data-testid="tweet"], article[role="article"]';
     const AUTHOR_NAME_SELECTOR = '[data-testid="User-Name"]';
@@ -72,6 +72,8 @@
         {
             setting: 'showPostDislikeButton',
             name: 'dislike',
+            actionType: 'dislike',
+            ariaLabel: 'Мне не интересна эта публикация',
             paths: [
                 { d: 'M12 13.6c1.64-.013 3.278.76 4.284 2.02.114.14.218.282.317.43l-1.202.9c-.088-.102-.177-.197-.272-.289-.844-.823-1.98-1.264-3.125-1.26-1.146-.002-2.282.441-3.129 1.263-.095.092-.185.186-.273.287l-1.2-.902c.1-.149.205-.29.319-.429C8.728 14.364 10.36 13.59 12 13.6zM9.25 8c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9zm5.5 0c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9z' },
                 { d: 'M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2c-4.418 0-8 3.582-8 8s3.582 8 8 8 8-3.582 8-8-3.582-8-8-8z', clipRule: 'evenodd', fillRule: 'evenodd' },
@@ -80,6 +82,8 @@
         {
             setting: 'showPostIgnoreButton',
             name: 'ignore',
+            actionType: 'ignore',
+            ariaLabel: 'Игнорировать',
             paths: [
                 { d: 'M16 22h-2.35l-.275-.219-3.842-3.073 1.424-1.424L14 19.72v-5.477l2-2V22z' },
                 { d: 'M16 6.586l4.293-4.293 1.414 1.414-18 18-1.414-1.414 2.657-2.658C3.795 17.063 3 15.875 3 14.5v-5C3 7.567 4.567 6 6.5 6h2.148l4.727-3.781.274-.219H16v4.586zM9.625 7.78L9.351 8H6.5C5.672 8 5 8.672 5 9.5v5c0 .828.672 1.5 1.5 1.5h.086L14 8.586V4.28l-4.375 3.5z', clipRule: 'evenodd', fillRule: 'evenodd' },
@@ -88,6 +92,8 @@
         {
             setting: 'showPostBlacklistButton',
             name: 'blacklist',
+            actionType: 'blacklist',
+            ariaLabel: 'Внести в черный список',
             paths: [
                 { d: 'M12 3.75c-4.55 0-8.25 3.69-8.25 8.25 0 1.92.66 3.68 1.75 5.08L17.09 5.5C15.68 4.4 13.92 3.75 12 3.75zm6.5 3.17L6.92 18.5c1.4 1.1 3.16 1.75 5.08 1.75 4.56 0 8.25-3.69 8.25-8.25 0-1.92-.65-3.68-1.75-5.08zM1.75 12C1.75 6.34 6.34 1.75 12 1.75S22.25 6.34 22.25 12 17.66 22.25 12 22.25 1.75 17.66 1.75 12z' },
             ],
@@ -166,6 +172,10 @@
   let notInterestedMenuTimeout = 0;
   let notInterestedFeedbackObserver = null;
   let notInterestedFeedbackTimeout = 0;
+  let postActionMenuObserver = null;
+  let postActionMenuTimeout = 0;
+  let postActionConfirmationObserver = null;
+  let postActionConfirmationTimeout = 0;
   let userScrollIntentVersion = 0;
     let directNotInterestedStrategyRegistered = false;
     let lastHiddenPostCount = 0;
@@ -199,6 +209,16 @@
       notInterestedFeedbackObserver = null;
     }
     window.clearTimeout(notInterestedFeedbackTimeout);
+    if (postActionMenuObserver) {
+      postActionMenuObserver.disconnect();
+      postActionMenuObserver = null;
+    }
+    window.clearTimeout(postActionMenuTimeout);
+    if (postActionConfirmationObserver) {
+      postActionConfirmationObserver.disconnect();
+      postActionConfirmationObserver = null;
+    }
+    window.clearTimeout(postActionConfirmationTimeout);
     notInterestedQueue.length = 0;
     window.clearTimeout(scanTimer);
     window.clearTimeout(scanDebounceTimer);
@@ -413,7 +433,16 @@
         border-radius: 9999px !important;
         background: transparent !important;
         color: rgb(83, 100, 113) !important;
-        cursor: default !important;
+        cursor: pointer !important;
+        transition: background-color 120ms ease, color 120ms ease !important;
+      }
+      .xff-post-action-shortcut:hover,
+      .xff-post-action-shortcut:focus-visible {
+        background: rgba(29, 155, 240, 0.1) !important;
+        color: rgb(29, 155, 240) !important;
+      }
+      .xff-post-action-shortcut:active {
+        background: rgba(29, 155, 240, 0.18) !important;
       }
       .xff-post-action-shortcut svg {
         display: block !important;
@@ -424,6 +453,11 @@
       @media (prefers-color-scheme: dark) {
         .xff-post-action-shortcut {
           color: rgb(113, 118, 123) !important;
+        }
+        .xff-post-action-shortcut:hover,
+        .xff-post-action-shortcut:focus-visible {
+          background: rgba(29, 155, 240, 0.18) !important;
+          color: rgb(29, 155, 240) !important;
         }
       }
     `;
@@ -528,7 +562,7 @@
       makeSubtabButton('ui-floating', 'Плавающие кнопки', true),
       makeSubtabButton('ui-side-panels', 'Панели справа'),
       makeSubtabButton('ui-menu-buttons', 'Кнопки меню', true),
-      makeSubtabButton('ui-post-elements', 'Элементы постов', true),
+      makeSubtabButton('ui-post-elements', 'Элементы постов'),
     ];
     uiSubtabs.append(...uiSubtabButtons);
     subtabBar.append(postSubtabs, uiSubtabs);
@@ -767,9 +801,9 @@
       makeUnavailableNote('Скрывать следующие кнопки:'),
       makePostElementSwitch('hidePostGrokButton', 'Кнопка Grok'),
       makeUnavailableNote('Добавить следующие кнопки:'),
-      makePostElementSwitch('showPostDislikeButton', 'Дизлайк', true),
-      makePostElementSwitch('showPostIgnoreButton', 'Игнор', true),
-      makePostElementSwitch('showPostBlacklistButton', 'Чёрный список', true)
+      makePostElementSwitch('showPostDislikeButton', 'Дизлайк'),
+      makePostElementSwitch('showPostIgnoreButton', 'Игнор'),
+      makePostElementSwitch('showPostBlacklistButton', 'Чёрный список')
     );
     irritantsTab.append(uiFloatingPanel, uiSidePanelsPanel, uiMenuButtonsPanel, uiPostElementsPanel);
 
@@ -1522,6 +1556,10 @@
         color: var(--xff-text) !important;
       }
 
+      #xff-root .xff-tab.xff-subtab[data-subtab="ui-post-elements"] {
+        color: var(--xff-text) !important;
+      }
+
       #xff-root .xff-tab-panel[hidden] {
         display: none !important;
       }
@@ -1597,7 +1635,7 @@
 
       #xff-root .xff-ui-floating-panel .xff-unimplemented-note,
       #xff-root .xff-ui-side-panels-panel .xff-unimplemented-note,
-      #xff-root .xff-ui-post-elements-panel > .xff-unimplemented-note:first-child {
+      #xff-root .xff-ui-post-elements-panel .xff-unimplemented-note {
         color: var(--xff-text) !important;
       }
 
@@ -2394,7 +2432,7 @@
         return child.dataset.xffPostAction === shortcut.name;
       });
       if (!existing) {
-        actionContainer.insertBefore(createPostActionShortcut(shortcut), insertionAnchor || null);
+        actionContainer.insertBefore(createPostActionShortcut(post, shortcut), insertionAnchor || null);
       }
     });
   }
@@ -2420,14 +2458,18 @@
     return current?.parentElement === container ? current : null;
   }
 
-  function createPostActionShortcut(shortcut) {
+  function createPostActionShortcut(post, shortcut) {
     const wrapper = makeElement('div', 'xff-post-action-shortcut-container');
     wrapper.dataset.xffPostAction = shortcut.name;
 
     const button = makeElement('button', 'xff-post-action-shortcut');
     button.type = 'button';
-    button.tabIndex = -1;
-    button.setAttribute('aria-hidden', 'true');
+    button.setAttribute('aria-label', shortcut.ariaLabel);
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      clickPostActionShortcut(post, shortcut);
+    });
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
@@ -2445,6 +2487,149 @@
     button.append(svg);
     wrapper.append(button);
     return wrapper;
+  }
+
+  function clickPostActionShortcut(post, shortcut) {
+    if (!post?.isConnected || isDestroyed) {
+      return;
+    }
+
+    // Let X show its confirmation dialog before applying the block action.
+    const directAction = shortcut.actionType === 'blacklist'
+      ? null
+      : getDirectPostMenuAction(post, shortcut.actionType);
+    if (directAction) {
+      try {
+        directAction();
+        return;
+      } catch (error) {
+        console.warn(`[X Feed Filter] Direct ${shortcut.name} action failed; opening the post menu.`, error);
+      }
+    }
+
+    const moreButton = post.querySelector('[data-testid="caret"]')
+      || post.querySelector('button[aria-label*="Ещё"], button[aria-label*="More"]');
+    if (!moreButton) {
+      return;
+    }
+
+    if (postActionMenuObserver) {
+      postActionMenuObserver.disconnect();
+      postActionMenuObserver = null;
+    }
+    window.clearTimeout(postActionMenuTimeout);
+    postActionMenuTimeout = 0;
+
+    const finishMenuObserver = () => {
+      if (postActionMenuObserver) {
+        postActionMenuObserver.disconnect();
+        postActionMenuObserver = null;
+      }
+      window.clearTimeout(postActionMenuTimeout);
+      postActionMenuTimeout = 0;
+    };
+
+    const tryClickMenuAction = () => {
+      const menus = Array.from(document.querySelectorAll('[role="menu"]'));
+      for (let menuIndex = menus.length - 1; menuIndex >= 0; menuIndex -= 1) {
+        const menuItems = menus[menuIndex].querySelectorAll('[role="menuitem"]');
+        for (const item of menuItems) {
+          if (matchesPostMenuAction(
+            shortcut.actionType,
+            `${item.getAttribute('aria-label') || ''} ${item.textContent || ''}`,
+            item.getAttribute('data-testid') || ''
+          )) {
+            item.click();
+            finishMenuObserver();
+            if (shortcut.actionType === 'blacklist') {
+              waitForBlacklistConfirmationClose(post, moreButton);
+            }
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    moreButton.click();
+    if (tryClickMenuAction()) {
+      return;
+    }
+
+    postActionMenuObserver = new MutationObserver(() => {
+      tryClickMenuAction();
+    });
+    postActionMenuObserver.observe(document.body || document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+    postActionMenuTimeout = window.setTimeout(finishMenuObserver, 2000);
+  }
+
+  function waitForBlacklistConfirmationClose(post, moreButton) {
+    if (postActionConfirmationObserver) {
+      postActionConfirmationObserver.disconnect();
+      postActionConfirmationObserver = null;
+    }
+    window.clearTimeout(postActionConfirmationTimeout);
+
+    let dialogSeen = false;
+    let finished = false;
+    const findBlockDialog = () => Array.from(
+      document.querySelectorAll('[role="alertdialog"], [role="dialog"]')
+    ).find((dialog) => /черн.{0,5}\s+список|blacklist|block\s+@/i.test(dialog.textContent || ''));
+
+    const finish = (closeMenu) => {
+      if (finished) return;
+      finished = true;
+      if (postActionConfirmationObserver) {
+        postActionConfirmationObserver.disconnect();
+        postActionConfirmationObserver = null;
+      }
+      window.clearTimeout(postActionConfirmationTimeout);
+      postActionConfirmationTimeout = 0;
+
+      if (closeMenu && post.isConnected && moreButton.isConnected) {
+        if (moreButton.getAttribute('aria-expanded') === 'true') {
+          moreButton.click();
+        } else {
+          const blacklistMenuRemainsOpen = Array.from(
+            document.querySelectorAll('[role="menu"]')
+          ).some((menu) => menu.getClientRects().length > 0
+            && Array.from(menu.querySelectorAll('[role="menuitem"]')).some((item) => matchesPostMenuAction(
+              'blacklist',
+              `${item.getAttribute('aria-label') || ''} ${item.textContent || ''}`,
+              item.getAttribute('data-testid') || ''
+            )));
+          if (blacklistMenuRemainsOpen) {
+            document.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'Escape',
+              code: 'Escape',
+              bubbles: true,
+            }));
+          }
+        }
+      }
+    };
+
+    const checkDialogState = () => {
+      if (findBlockDialog()) {
+        dialogSeen = true;
+      } else if (dialogSeen) {
+        finish(true);
+      }
+    };
+
+    if (findBlockDialog()) {
+      dialogSeen = true;
+    }
+    postActionConfirmationObserver = new MutationObserver(checkDialogState);
+    postActionConfirmationObserver.observe(document.body || document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
+    postActionConfirmationTimeout = window.setTimeout(() => finish(false), 60000);
   }
 
   function scanPage() {
@@ -2689,6 +2874,10 @@
   }
 
   function getDirectNotInterestedAction(post) {
+    return getDirectPostMenuAction(post, 'dislike');
+  }
+
+  function getDirectPostMenuAction(post, actionType) {
     const moreButton = post.querySelector('[data-testid="caret"]')
       || post.querySelector('button[aria-label*="Ещё"], button[aria-label*="More"]');
     if (!moreButton) {
@@ -2714,12 +2903,15 @@
           continue;
         }
 
-        const notInterestedItem = items.find((item) => {
-          const label = String(item?.text || '').normalize('NFKC').toLowerCase();
-          return /не\s*интерес|not\s+interested/.test(label);
+        const matchingItem = items.find((item) => {
+          return matchesPostMenuAction(
+            actionType,
+            String(item?.text || ''),
+            String(item?.testID || '')
+          );
         });
-        if (typeof notInterestedItem?.onClick === 'function') {
-          return notInterestedItem.onClick;
+        if (typeof matchingItem?.onClick === 'function') {
+          return matchingItem.onClick;
         }
       } catch (_) {
         // X can change its menu internals; the visible menu remains the fallback.
@@ -2727,6 +2919,30 @@
     }
     return null;
   }
+
+  function matchesPostMenuAction(actionType, label, testId = '') {
+    const normalizedLabel = `${testId} ${label}`
+      .normalize('NFKC')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+    if (actionType === 'dislike') {
+      return /не\s*интерес|not\s+interested/.test(normalizedLabel);
+    }
+    if (actionType === 'ignore') {
+      return /^(?:игнорировать(?:\s|$)|mute(?:\s|$)|ignore(?:\s|$))/.test(normalizedLabel);
+    }
+    if (actionType === 'blacklist') {
+      if (/^(?:(?:убрать|снять|удалить)(?:\s|$)|(?:remove|unblock|unblacklist)\b)/.test(normalizedLabel)) {
+        return false;
+      }
+      return testId.toLowerCase() === 'block'
+        || /^(?:внести\s+.+\s+в\s+ч[её]р?н.{0,3}\s+список|block\b|add\s+.+\s+to\s+(?:the\s+)?(?:block|black)\s*list)/.test(normalizedLabel);
+    }
+    return false;
+  }
+
   function waitForNotInterestedFeedbackAction(wrapper, feedbackAction, callback) {
     let finished = false;
 
