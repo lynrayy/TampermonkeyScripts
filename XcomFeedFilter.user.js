@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.3.1
+// @version      1.3.4
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.3.1';
+    const SCRIPT_VERSION = '1.3.4';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
     const POST_SELECTOR = 'article[data-testid="tweet"], article[role="article"]';
     const AUTHOR_NAME_SELECTOR = '[data-testid="User-Name"]';
@@ -132,6 +132,10 @@
         nameFilterNotInterested: false,
         nameFilterIncludeReplies: false,
         nameFilterKeywords: '',
+        contentFilterEnabled: false,
+        contentFilterNotInterested: false,
+        contentFilterIncludeReplies: false,
+        contentFilterKeywords: '',
         tab: 'recency',
         subtab: 'posts-verified',
         recencyMinValue: 0,
@@ -160,8 +164,8 @@
   let notInterestedInProgress = false;
   let notInterestedMenuObserver = null;
   let notInterestedMenuTimeout = 0;
-  let retweetFeedbackObserver = null;
-  let retweetFeedbackTimeout = 0;
+  let notInterestedFeedbackObserver = null;
+  let notInterestedFeedbackTimeout = 0;
   let userScrollIntentVersion = 0;
     let directNotInterestedStrategyRegistered = false;
     let lastHiddenPostCount = 0;
@@ -190,11 +194,11 @@
       notInterestedMenuObserver = null;
     }
     window.clearTimeout(notInterestedMenuTimeout);
-    if (retweetFeedbackObserver) {
-      retweetFeedbackObserver.disconnect();
-      retweetFeedbackObserver = null;
+    if (notInterestedFeedbackObserver) {
+      notInterestedFeedbackObserver.disconnect();
+      notInterestedFeedbackObserver = null;
     }
-    window.clearTimeout(retweetFeedbackTimeout);
+    window.clearTimeout(notInterestedFeedbackTimeout);
     notInterestedQueue.length = 0;
     window.clearTimeout(scanTimer);
     window.clearTimeout(scanDebounceTimer);
@@ -307,6 +311,10 @@
       nameFilterNotInterested: Boolean(value.nameFilterNotInterested),
       nameFilterIncludeReplies: Boolean(value.nameFilterIncludeReplies),
       nameFilterKeywords: typeof value.nameFilterKeywords === 'string' ? value.nameFilterKeywords : '',
+      contentFilterEnabled: Boolean(value.contentFilterEnabled),
+      contentFilterNotInterested: Boolean(value.contentFilterNotInterested),
+      contentFilterIncludeReplies: Boolean(value.contentFilterIncludeReplies),
+      contentFilterKeywords: typeof value.contentFilterKeywords === 'string' ? value.contentFilterKeywords : '',
       tab: ['recency', 'other', 'irritants', 'db'].includes(value.tab) ? value.tab : 'recency',
       subtab: [
         'posts-verified',
@@ -624,32 +632,28 @@
     const postNamesPanel = makeElement('div', 'xff-subtab-panel xff-post-names-panel');
     postNamesPanel.append(nameFilterSwitch, nameFilterKeywordsField, nameFilterNotInterestedSwitch, nameFilterIncludeRepliesSwitch);
     const postContentPanel = makeElement('div', 'xff-subtab-panel xff-post-content-panel');
-    const blacklistSwitch = makeElement('label', 'xff-switch xff-unimplemented');
-    const blacklistEnabled = makeElement('input', 'xff-unimplemented-control');
+    const blacklistSwitch = makeElement('label', 'xff-switch');
+    const blacklistEnabled = makeElement('input', 'xff-content-filter-enabled');
     blacklistEnabled.type = 'checkbox';
-    blacklistEnabled.disabled = true;
     blacklistSwitch.append(blacklistEnabled, makeElement('span', '', 'Чёрный список слов'));
 
-    const blacklistKeywordsField = makeElement('label', 'xff-name-filter-field xff-unimplemented');
+    const blacklistKeywordsField = makeElement('label', 'xff-name-filter-field');
     const blacklistKeywordsCaption = makeElement('span', '', 'Запрещённые слова (через запятую)');
-    const blacklistKeywordsInput = makeElement('input', 'xff-unimplemented-control');
+    const blacklistKeywordsInput = makeElement('input', 'xff-content-filter-keywords');
     blacklistKeywordsInput.type = 'text';
     blacklistKeywordsInput.placeholder = 'слово, фраза, эмодзи';
     blacklistKeywordsInput.autocomplete = 'off';
     blacklistKeywordsInput.spellcheck = false;
-    blacklistKeywordsInput.disabled = true;
     blacklistKeywordsField.append(blacklistKeywordsCaption, blacklistKeywordsInput);
 
-    const blacklistNotInterestedSwitch = makeElement('label', 'xff-switch xff-switch-child xff-unimplemented');
-    const blacklistNotInterested = makeElement('input', 'xff-unimplemented-control');
+    const blacklistNotInterestedSwitch = makeElement('label', 'xff-switch xff-switch-child');
+    const blacklistNotInterested = makeElement('input', 'xff-content-filter-not-interested');
     blacklistNotInterested.type = 'checkbox';
-    blacklistNotInterested.disabled = true;
     blacklistNotInterestedSwitch.append(blacklistNotInterested, makeElement('span', '', 'Прожимать "Не интересно"'));
 
-    const blacklistIncludeRepliesSwitch = makeElement('label', 'xff-switch xff-switch-child xff-unimplemented');
-    const blacklistIncludeReplies = makeElement('input', 'xff-unimplemented-control');
+    const blacklistIncludeRepliesSwitch = makeElement('label', 'xff-switch xff-switch-child');
+    const blacklistIncludeReplies = makeElement('input', 'xff-content-filter-include-replies');
     blacklistIncludeReplies.type = 'checkbox';
-    blacklistIncludeReplies.disabled = true;
     blacklistIncludeRepliesSwitch.append(blacklistIncludeReplies, makeElement('span', '', 'Также учитывать ответы'));
     postContentPanel.append(blacklistSwitch, blacklistKeywordsField, blacklistNotInterestedSwitch, blacklistIncludeRepliesSwitch);
 
@@ -857,6 +861,10 @@
       nameFilterKeywordsInput,
       nameFilterNotInterested,
       nameFilterIncludeReplies,
+      contentFilterEnabled: blacklistEnabled,
+      contentFilterKeywordsInput: blacklistKeywordsInput,
+      contentFilterNotInterested: blacklistNotInterested,
+      contentFilterIncludeReplies: blacklistIncludeReplies,
       recencyMinInput: recencyMinField.input,
       recencyMinUnit: recencyMinField.select,
       recencyMaxInput: recencyMaxField.input,
@@ -1027,6 +1035,33 @@
 
     ui.nameFilterKeywordsInput.addEventListener('input', () => {
       settings.nameFilterKeywords = ui.nameFilterKeywordsInput.value;
+      saveSettings();
+      scheduleScan();
+    });
+
+    ui.contentFilterEnabled.addEventListener('change', () => {
+      settings.contentFilterEnabled = ui.contentFilterEnabled.checked;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
+
+    ui.contentFilterNotInterested.addEventListener('change', () => {
+      settings.contentFilterNotInterested = ui.contentFilterNotInterested.checked;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
+
+    ui.contentFilterIncludeReplies.addEventListener('change', () => {
+      settings.contentFilterIncludeReplies = ui.contentFilterIncludeReplies.checked;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
+
+    ui.contentFilterKeywordsInput.addEventListener('input', () => {
+      settings.contentFilterKeywords = ui.contentFilterKeywordsInput.value;
       saveSettings();
       scheduleScan();
     });
@@ -2430,12 +2465,12 @@
       syncPostUiForPost(post);
       let hide = post.hasAttribute('data-xff-not-interested')
         || (post.hasAttribute('data-xff-not-interested-pending')
-          && !post.hasAttribute('data-xff-retweet-feedback-pending'));
+          && !post.hasAttribute('data-xff-feedback-pending'));
 
       if (!hide && settings.hidePureRetweets && isPureRetweet(post)) {
         if (settings.hidePureRetweetsNotInterested) {
-          const actionQueued = clickNotInterested(post, { showFewerRetweets: true });
-          hide = !actionQueued && !post.hasAttribute('data-xff-retweet-feedback-pending');
+          const actionQueued = clickNotInterested(post, { feedbackAction: 'retweets' });
+          hide = !actionQueued && !post.hasAttribute('data-xff-feedback-pending');
         } else {
           hide = true;
         }
@@ -2507,7 +2542,18 @@
 
       if (!hide && settings.nameFilterEnabled && isNameFiltered(post, settings.nameFilterIncludeReplies)) {
         if (settings.nameFilterNotInterested) {
-          clickNotInterested(post);
+          const actionQueued = clickNotInterested(post, { feedbackAction: 'authorPosts' });
+          hide = !actionQueued && !post.hasAttribute('data-xff-not-interested-pending');
+        } else {
+          hide = true;
+        }
+      }
+
+      if (!hide && settings.contentFilterEnabled
+        && isContentFiltered(post, settings.contentFilterIncludeReplies)) {
+        if (settings.contentFilterNotInterested) {
+          const actionQueued = clickNotInterested(post);
+          hide = !actionQueued && !post.hasAttribute('data-xff-not-interested-pending');
         } else {
           hide = true;
         }
@@ -2612,13 +2658,15 @@
   }
 
   function clickNotInterested(post, options = {}) {
-    const showFewerRetweets = Boolean(options.showFewerRetweets);
-    if (showFewerRetweets && post.hasAttribute('data-xff-retweet-feedback-pending')) {
+    const feedbackAction = ['retweets', 'authorPosts'].includes(options.feedbackAction)
+      ? options.feedbackAction
+      : null;
+    if (feedbackAction && post.hasAttribute('data-xff-feedback-pending')) {
       return true;
     }
     if (post.hasAttribute('data-xff-not-interested')
       || post.hasAttribute('data-xff-not-interested-pending')
-      || (showFewerRetweets && post.hasAttribute('data-xff-retweet-action-failed'))) {
+      || (feedbackAction && post.hasAttribute('data-xff-feedback-action-failed'))) {
       return false;
     }
     const moreBtn = post.querySelector('[data-testid="caret"]')
@@ -2627,13 +2675,13 @@
       return false;
     }
     post.setAttribute('data-xff-not-interested-pending', 'true');
-    if (showFewerRetweets) {
-      post.setAttribute('data-xff-retweet-feedback-pending', 'true');
+    if (feedbackAction) {
+      post.setAttribute('data-xff-feedback-pending', 'true');
     }
     notInterestedQueue.push({
       post,
       wrapper: getPostWrapper(post),
-      showFewerRetweets,
+      feedbackAction,
     });
     processNotInterestedQueue();
     return true;
@@ -2678,29 +2726,32 @@
     }
     return null;
   }
-  function waitForRetweetFeedbackAction(wrapper, callback) {
+  function waitForNotInterestedFeedbackAction(wrapper, feedbackAction, callback) {
     let finished = false;
 
     const finish = (clicked) => {
       if (finished) return;
       finished = true;
-      if (retweetFeedbackObserver) {
-        retweetFeedbackObserver.disconnect();
-        retweetFeedbackObserver = null;
+      if (notInterestedFeedbackObserver) {
+        notInterestedFeedbackObserver.disconnect();
+        notInterestedFeedbackObserver = null;
       }
-      window.clearTimeout(retweetFeedbackTimeout);
-      retweetFeedbackTimeout = 0;
+      window.clearTimeout(notInterestedFeedbackTimeout);
+      notInterestedFeedbackTimeout = 0;
       callback(clicked);
     };
 
     const tryClickAction = () => {
       const root = wrapper?.isConnected ? wrapper : document;
+      const pattern = feedbackAction === 'retweets'
+        ? /показывать меньше репостов от|show (?:me )?fewer reposts from|see fewer reposts from/
+        : /показывать меньше (?:публикаций|постов) от|show (?:me )?fewer posts from|see fewer posts from/;
       const action = Array.from(root.querySelectorAll('button, [role="button"]')).find((button) => {
         const label = `${button.getAttribute('aria-label') || ''} ${button.innerText || button.textContent || ''}`
           .normalize('NFKC')
           .replace(/\s+/g, ' ')
           .toLowerCase();
-        return /показывать меньше репостов от|show fewer reposts from|see fewer reposts from/.test(label);
+        return pattern.test(label);
       });
       if (!action) {
         return false;
@@ -2715,14 +2766,14 @@
       return;
     }
 
-    retweetFeedbackObserver = new MutationObserver(() => {
+    notInterestedFeedbackObserver = new MutationObserver(() => {
       tryClickAction();
     });
-    retweetFeedbackObserver.observe(document.body || document.documentElement, {
+    notInterestedFeedbackObserver.observe(document.body || document.documentElement, {
       childList: true,
       subtree: true,
     });
-    retweetFeedbackTimeout = window.setTimeout(() => finish(false), 5000);
+    notInterestedFeedbackTimeout = window.setTimeout(() => finish(false), 5000);
   }
 
   function processNotInterestedQueue() {
@@ -2734,10 +2785,10 @@
     if (!request) {
       return;
     }
-    const { post, wrapper, showFewerRetweets } = request;
+    const { post, wrapper, feedbackAction } = request;
     if (!post.isConnected) {
       post.removeAttribute('data-xff-not-interested-pending');
-      post.removeAttribute('data-xff-retweet-feedback-pending');
+      post.removeAttribute('data-xff-feedback-pending');
       processNotInterestedQueue();
       return;
     }
@@ -2755,18 +2806,18 @@
       }
       window.clearTimeout(notInterestedMenuTimeout);
       notInterestedMenuTimeout = 0;
-      if (clicked && !showFewerRetweets) {
+      if (clicked && !feedbackAction) {
         markPostNotInterested(post);
-      } else if (showFewerRetweets && clicked && !feedbackActionClicked && post.isConnected) {
-        post.setAttribute('data-xff-retweet-action-failed', 'true');
+      } else if (feedbackAction && clicked && !feedbackActionClicked && post.isConnected) {
+        post.setAttribute('data-xff-feedback-action-failed', 'true');
         markPostNotInterested(post);
-      } else if (showFewerRetweets && !clicked) {
-        post.setAttribute('data-xff-retweet-action-failed', 'true');
+      } else if (feedbackAction && !clicked) {
+        post.setAttribute('data-xff-feedback-action-failed', 'true');
       }
       post.removeAttribute('data-xff-not-interested-pending');
-      post.removeAttribute('data-xff-retweet-feedback-pending');
+      post.removeAttribute('data-xff-feedback-pending');
       notInterestedInProgress = false;
-      if (clicked || showFewerRetweets) {
+      if (clicked || feedbackAction) {
         scheduleScan();
       }
       window.setTimeout(processNotInterestedQueue, 100);
@@ -2782,8 +2833,8 @@
       window.clearTimeout(notInterestedMenuTimeout);
       notInterestedMenuTimeout = 0;
 
-      if (clicked && showFewerRetweets) {
-        waitForRetweetFeedbackAction(wrapper, (feedbackActionClicked) => {
+      if (clicked && feedbackAction) {
+        waitForNotInterestedFeedbackAction(wrapper, feedbackAction, (feedbackActionClicked) => {
           complete(true, feedbackActionClicked);
         });
         return;
@@ -3117,11 +3168,16 @@
     return nicks;
   }
 
-  function isNameFiltered(post, includeReplies) {
-    const keywords = (settings.nameFilterKeywords || '')
+  function parseKeywordList(value) {
+    // Trim each comma-delimited entry while preserving spaces inside phrases.
+    return String(value || '')
       .split(',')
-      .map((word) => word.trim())
-      .filter((word) => word.length > 0);
+      .map((phrase) => phrase.trim())
+      .filter((phrase) => phrase.length > 0);
+  }
+
+  function isNameFiltered(post, includeReplies) {
+    const keywords = parseKeywordList(settings.nameFilterKeywords);
 
     if (!keywords.length) {
       return false;
@@ -3176,6 +3232,27 @@
     }
 
     return false;
+  }
+
+  function isContentFiltered(post, includeReplies) {
+    const keywords = parseKeywordList(settings.contentFilterKeywords);
+    if (keywords.length === 0) {
+      return false;
+    }
+
+    const contentElements = Array.from(post.querySelectorAll('[data-testid="tweetText"]'));
+    const elementsToCheck = includeReplies ? contentElements : contentElements.slice(0, 1);
+    const postText = elementsToCheck.length > 0
+      ? elementsToCheck.map((element) => {
+        const emojiAltText = Array.from(element.querySelectorAll('img[alt]'))
+          .map((image) => image.getAttribute('alt') || '')
+          .join(' ');
+        return `${element.textContent || ''} ${emojiAltText}`;
+      }).join(' ')
+      : (post.textContent || '');
+    const normalizedPostText = postText.toLowerCase();
+
+    return keywords.some((keyword) => normalizedPostText.includes(keyword.toLowerCase()));
   }
 
   function readPostAgeSeconds(post) {
@@ -3452,6 +3529,11 @@
     ui.nameFilterNotInterested.disabled = !settings.nameFilterEnabled;
     ui.nameFilterIncludeReplies.checked = settings.nameFilterIncludeReplies;
     ui.nameFilterIncludeReplies.disabled = !settings.nameFilterEnabled;
+    ui.contentFilterEnabled.checked = settings.contentFilterEnabled;
+    ui.contentFilterNotInterested.checked = settings.contentFilterNotInterested;
+    ui.contentFilterNotInterested.disabled = !settings.contentFilterEnabled;
+    ui.contentFilterIncludeReplies.checked = settings.contentFilterIncludeReplies;
+    ui.contentFilterIncludeReplies.disabled = !settings.contentFilterEnabled;
     Object.entries(ui.menuItemCheckboxes).forEach(([setting, checkbox]) => {
       checkbox.checked = settings[setting];
     });
@@ -3460,6 +3542,9 @@
     });
     if (document.activeElement !== ui.nameFilterKeywordsInput) {
       ui.nameFilterKeywordsInput.value = settings.nameFilterKeywords || '';
+    }
+    if (document.activeElement !== ui.contentFilterKeywordsInput) {
+      ui.contentFilterKeywordsInput.value = settings.contentFilterKeywords || '';
     }
 
     if (document.activeElement !== ui.recencyMinInput) {
