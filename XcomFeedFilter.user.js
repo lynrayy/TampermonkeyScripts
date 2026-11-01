@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.2.23
+// @version      1.3
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.2.23';
+    const SCRIPT_VERSION = '1.3';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
     const POST_SELECTOR = 'article[data-testid="tweet"], article[role="article"]';
     const AUTHOR_NAME_SELECTOR = '[data-testid="User-Name"]';
@@ -54,7 +54,61 @@
         ['years', 'лет'],
     ];
 
+    const NAV_MENU_ITEMS = [
+        { setting: 'hideMenuHome', label: 'Главная', selector: '[data-testid="AppTabBar_Home_Link"]' },
+        { setting: 'hideMenuExplore', label: 'Обзор', selector: '[data-testid="AppTabBar_Explore_Link"]' },
+        { setting: 'hideMenuNotifications', label: 'Уведомления', selector: '[data-testid="AppTabBar_Notifications_Link"]' },
+        { setting: 'hideMenuChat', label: 'Чат', selector: '[data-testid="AppTabBar_DirectMessage_Link"]' },
+        { setting: 'hideMenuCalls', label: 'Звонки', selector: '[data-testid="AppTabBar_Calls_Link"]' },
+        { setting: 'hideMenuGrok', label: 'Grok', selector: 'a[href="/i/grok"]' },
+        { setting: 'hideMenuHistory', label: 'История', selector: 'a[href="/i/history"]' },
+        { setting: 'hideMenuCreatorStudio', label: 'Творческая студия', selector: 'a[href="/i/jf/creators/studio"]' },
+        { setting: 'hideMenuPremium', label: 'Premium', selector: '[data-testid="premium-signup-tab"]' },
+        { setting: 'hideMenuProfile', label: 'Профиль', selector: '[data-testid="AppTabBar_Profile_Link"]' },
+        { setting: 'hideMenuMore', label: 'Ещё', selector: '[data-testid="AppTabBar_More_Menu"]' },
+    ];
+
+    const POST_ACTION_SHORTCUTS = [
+        {
+            setting: 'showPostDislikeButton',
+            name: 'dislike',
+            paths: [
+                { d: 'M12 13.6c1.64-.013 3.278.76 4.284 2.02.114.14.218.282.317.43l-1.202.9c-.088-.102-.177-.197-.272-.289-.844-.823-1.98-1.264-3.125-1.26-1.146-.002-2.282.441-3.129 1.263-.095.092-.185.186-.273.287l-1.2-.902c.1-.149.205-.29.319-.429C8.728 14.364 10.36 13.59 12 13.6zM9.25 8c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9zm5.5 0c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9z' },
+                { d: 'M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2c-4.418 0-8 3.582-8 8s3.582 8 8 8 8-3.582 8-8-3.582-8-8-8z', clipRule: 'evenodd', fillRule: 'evenodd' },
+            ],
+        },
+        {
+            setting: 'showPostIgnoreButton',
+            name: 'ignore',
+            paths: [
+                { d: 'M16 22h-2.35l-.275-.219-3.842-3.073 1.424-1.424L14 19.72v-5.477l2-2V22z' },
+                { d: 'M16 6.586l4.293-4.293 1.414 1.414-18 18-1.414-1.414 2.657-2.658C3.795 17.063 3 15.875 3 14.5v-5C3 7.567 4.567 6 6.5 6h2.148l4.727-3.781.274-.219H16v4.586zM9.625 7.78L9.351 8H6.5C5.672 8 5 8.672 5 9.5v5c0 .828.672 1.5 1.5 1.5h.086L14 8.586V4.28l-4.375 3.5z', clipRule: 'evenodd', fillRule: 'evenodd' },
+            ],
+        },
+        {
+            setting: 'showPostBlacklistButton',
+            name: 'blacklist',
+            paths: [
+                { d: 'M12 3.75c-4.55 0-8.25 3.69-8.25 8.25 0 1.92.66 3.68 1.75 5.08L17.09 5.5C15.68 4.4 13.92 3.75 12 3.75zm6.5 3.17L6.92 18.5c1.4 1.1 3.16 1.75 5.08 1.75 4.56 0 8.25-3.69 8.25-8.25 0-1.92-.65-3.68-1.75-5.08zM1.75 12C1.75 6.34 6.34 1.75 12 1.75S22.25 6.34 22.25 12 17.66 22.25 12 22.25 1.75 17.66 1.75 12z' },
+            ],
+        },
+    ];
+
+    const FLOATING_BUTTONS = [
+        {
+            setting: 'hideFloatingGrok',
+            buttonSelector: 'button[data-testid="GrokDrawerHeader"]',
+            containerSelector: '[data-testid="GrokDrawer"]',
+        },
+        {
+            setting: 'hideFloatingChat',
+            buttonSelector: 'button[data-testid="chat-drawer-main"]',
+            containerSelector: '[data-testid="chat-drawer-root"]',
+        },
+    ];
+
     const DEFAULT_SETTINGS = {
+        ...Object.fromEntries(NAV_MENU_ITEMS.map(({ setting }) => [setting, false])),
         recencyEnabled: false,
         hideVerified: false,
         hideVerifiedReplies: false,
@@ -65,6 +119,12 @@
         hideWhatsHappening: false,
         hideWhoToFollow: false,
         hideWhoToFollowFeed: false,
+        hideFloatingGrok: false,
+        hideFloatingChat: false,
+        hidePostGrokButton: false,
+        showPostDislikeButton: false,
+        showPostIgnoreButton: false,
+        showPostBlacklistButton: false,
         nameFilterEnabled: false,
         nameFilterNotInterested: false,
         nameFilterIncludeReplies: false,
@@ -89,6 +149,8 @@
   let irritantObserverTarget = null;
   let irritantObserverTimer = 0;
   let irritantRetryTimer = 0;
+  let menuButtonPlacementTimer = 0;
+  let postUiSyncTimer = 0;
   let ui = null;
   let isDestroyed = false;
   const notInterestedQueue = [];
@@ -116,6 +178,8 @@
     irritantObserverTarget = null;
     window.clearTimeout(irritantObserverTimer);
     window.clearTimeout(irritantRetryTimer);
+    window.clearTimeout(menuButtonPlacementTimer);
+    window.clearTimeout(postUiSyncTimer);
     if (notInterestedMenuObserver) {
       notInterestedMenuObserver.disconnect();
       notInterestedMenuObserver = null;
@@ -157,6 +221,9 @@
     registerMenuCommand();
     startObserver();
     startIrritantObserver();
+    scheduleMenuButtonPlacementRetries();
+    hideFloatingButtons();
+    syncPostUiElements();
     scheduleIrritantRetries();
     scheduleScan();
 
@@ -174,6 +241,9 @@
   function handleRouteChange() {
     startObserver();
     startIrritantObserver();
+    scheduleMenuButtonPlacementRetries();
+    hideFloatingButtons();
+    schedulePostUiSync();
     scheduleIrritantRetries();
     scheduleScan();
   }
@@ -203,6 +273,7 @@
 
   function normalizeSettings(value) {
     return {
+      ...Object.fromEntries(NAV_MENU_ITEMS.map(({ setting }) => [setting, Boolean(value[setting])])),
       recencyEnabled: Boolean(value.recencyEnabled),
       hideVerified: Boolean(value.hideVerified),
       hideVerifiedReplies: Boolean(value.hideVerifiedReplies),
@@ -213,6 +284,12 @@
       hideWhatsHappening: Boolean(value.hideWhatsHappening),
       hideWhoToFollow: Boolean(value.hideWhoToFollow),
       hideWhoToFollowFeed: Boolean(value.hideWhoToFollowFeed),
+      hideFloatingGrok: Boolean(value.hideFloatingGrok),
+      hideFloatingChat: Boolean(value.hideFloatingChat),
+      hidePostGrokButton: Boolean(value.hidePostGrokButton),
+      showPostDislikeButton: Boolean(value.showPostDislikeButton),
+      showPostIgnoreButton: Boolean(value.showPostIgnoreButton),
+      showPostBlacklistButton: Boolean(value.showPostBlacklistButton),
       nameFilterEnabled: Boolean(value.nameFilterEnabled),
       nameFilterNotInterested: Boolean(value.nameFilterNotInterested),
       nameFilterIncludeReplies: Boolean(value.nameFilterIncludeReplies),
@@ -289,6 +366,45 @@
       [data-xff-hidden="true"] {
         display: none !important;
       }
+      [data-xff-menu-hidden="true"] {
+        display: none !important;
+      }
+      [data-xff-grok-action-hidden="true"] {
+        display: none !important;
+      }
+      [data-xff-floating-button-hidden="true"] {
+        display: none !important;
+      }
+      .xff-post-action-shortcut-container {
+        display: flex !important;
+        align-items: center !important;
+        flex: 0 0 auto !important;
+      }
+      .xff-post-action-shortcut {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 20px !important;
+        height: 20px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: 9999px !important;
+        background: transparent !important;
+        color: rgb(83, 100, 113) !important;
+        cursor: default !important;
+      }
+      .xff-post-action-shortcut svg {
+        display: block !important;
+        width: 18px !important;
+        height: 18px !important;
+        fill: currentColor !important;
+      }
+      @media (prefers-color-scheme: dark) {
+        .xff-post-action-shortcut {
+          color: rgb(113, 118, 123) !important;
+        }
+      }
     `;
 
     try {
@@ -322,6 +438,14 @@
         scanTimer = window.setTimeout(scanPage, 100);
       }
     }, SCAN_DEBOUNCE_MS);
+  }
+
+  function schedulePostUiSync() {
+    if (isDestroyed) {
+      return;
+    }
+    window.clearTimeout(postUiSyncTimer);
+    postUiSyncTimer = window.setTimeout(syncPostUiElements, 100);
   }
 
   function createUi() {
@@ -578,6 +702,16 @@
       text
     );
 
+    const floatingButtonCheckboxes = {};
+    const makeFloatingButtonSwitch = (setting, label) => {
+      const option = makeElement('label', 'xff-switch');
+      const checkbox = makeElement('input', `xff-${setting}`);
+      checkbox.type = 'checkbox';
+      option.append(checkbox, makeElement('span', '', label));
+      floatingButtonCheckboxes[setting] = checkbox;
+      return option;
+    };
+
     uiSidePanelsPanel.append(
       makeUnavailableNote('Скрывать следующие панели:'),
       hidePremiumSwitch,
@@ -587,37 +721,41 @@
 
     uiFloatingPanel.append(
       makeUnavailableNote('Скрывать следующие кнопки:'),
-      makeUnavailableSwitch('Grok'),
-      makeUnavailableSwitch('Чат')
+      makeFloatingButtonSwitch('hideFloatingGrok', 'Grok'),
+      makeFloatingButtonSwitch('hideFloatingChat', 'Чат')
     );
 
-    const menuItems = [
-      'Главная',
-      'Обзор',
-      'Уведомления',
-      'Чат',
-      'Звонки',
-      'Grok',
-      'История',
-      'Творческая студия',
-      'Premium',
-      'Профиль',
-      'Ещё',
-    ];
+    const menuItemCheckboxes = {};
     uiMenuButtonsPanel.append(makeUnavailableNote('Скрывать следующие пункты меню:'));
-    menuItems.forEach((item) => uiMenuButtonsPanel.append(makeUnavailableSwitch(item)));
+    NAV_MENU_ITEMS.forEach(({ setting, label }) => {
+      const option = makeElement('label', 'xff-switch');
+      const checkbox = makeElement('input', `xff-${setting}`);
+      checkbox.type = 'checkbox';
+      option.append(checkbox, makeElement('span', '', label));
+      menuItemCheckboxes[setting] = checkbox;
+      uiMenuButtonsPanel.append(option);
+    });
     uiMenuButtonsPanel.append(
       makeUnavailableNote('Другие опции', true),
       makeUnavailableSwitch('Изменить иконку История')
     );
 
+    const postElementCheckboxes = {};
+    const makePostElementSwitch = (setting, label, remainsUnimplemented = false) => {
+      const option = makeElement('label', 'xff-switch' + (remainsUnimplemented ? ' xff-unimplemented' : ''));
+      const checkbox = makeElement('input', `xff-${setting}`);
+      checkbox.type = 'checkbox';
+      option.append(checkbox, makeElement('span', '', label));
+      postElementCheckboxes[setting] = checkbox;
+      return option;
+    };
     uiPostElementsPanel.append(
       makeUnavailableNote('Скрывать следующие кнопки:'),
-      makeUnavailableSwitch('Кнопка Grok'),
+      makePostElementSwitch('hidePostGrokButton', 'Кнопка Grok'),
       makeUnavailableNote('Добавить следующие кнопки:'),
-      makeUnavailableSwitch('Дизлайк'),
-      makeUnavailableSwitch('Игнор'),
-      makeUnavailableSwitch('Чёрный список')
+      makePostElementSwitch('showPostDislikeButton', 'Дизлайк', true),
+      makePostElementSwitch('showPostIgnoreButton', 'Игнор', true),
+      makePostElementSwitch('showPostBlacklistButton', 'Чёрный список', true)
     );
     irritantsTab.append(uiFloatingPanel, uiSidePanelsPanel, uiMenuButtonsPanel, uiPostElementsPanel);
 
@@ -714,6 +852,9 @@
       presetSelect,
       dbClearBtn,
       dbTbody,
+      menuItemCheckboxes,
+      postElementCheckboxes,
+      floatingButtonCheckboxes,
     };
 
     ui.button.addEventListener('click', () => setPanelOpen(!settings.panelOpen));
@@ -722,6 +863,33 @@
     ui.tabOther.addEventListener('click', () => setTab('other'));
     ui.tabIrritants.addEventListener('click', () => setTab('irritants'));
     ui.tabDb.addEventListener('click', () => setTab('db'));
+
+    Object.entries(ui.menuItemCheckboxes).forEach(([setting, checkbox]) => {
+      checkbox.addEventListener('change', () => {
+        settings[setting] = checkbox.checked;
+        saveSettings();
+        renderUi();
+        hideNavigationMenuItems();
+      });
+    });
+
+    Object.entries(ui.postElementCheckboxes).forEach(([setting, checkbox]) => {
+      checkbox.addEventListener('change', () => {
+        settings[setting] = checkbox.checked;
+        saveSettings();
+        renderUi();
+        syncPostUiElements();
+      });
+    });
+
+    Object.entries(ui.floatingButtonCheckboxes).forEach(([setting, checkbox]) => {
+      checkbox.addEventListener('change', () => {
+        settings[setting] = checkbox.checked;
+        saveSettings();
+        renderUi();
+        hideFloatingButtons();
+      });
+    });
 
     ui.dbClearBtn.addEventListener('click', () => {
       settings.dbUsers = [];
@@ -854,6 +1022,7 @@
 
     renderUi();
     setupFullscreenHandling();
+    scheduleMenuButtonPlacementRetries();
   }
 
   function applyBaseUiStyles(host, button, panel) {
@@ -864,17 +1033,162 @@
     host.style.display = 'block';
     host.style.pointerEvents = 'none';
 
-    button.style.width = '54px';
-    button.style.height = '42px';
-    button.style.border = '1px solid #df7b73';
-    button.style.borderRadius = '8px';
-    button.style.background = '#000000';
-    button.style.color = '#ffffff';
+    button.style.width = '55px';
+    button.style.height = '55px';
+    button.style.border = '1px solid #9fb5c3';
+    button.style.borderRadius = '16px';
+    button.style.background = 'rgba(255, 255, 255, 0.85)';
+    button.style.color = '#0f1419';
     button.style.fontWeight = '800';
     button.style.cursor = 'pointer';
     button.style.pointerEvents = 'auto';
 
     panel.style.pointerEvents = 'auto';
+  }
+
+  function getFloatingDockButtons() {
+    return [
+      document.querySelector('[data-testid="GrokDrawerHeader"]'),
+      document.querySelector('[data-testid="chat-drawer-main"]'),
+    ].filter(Boolean);
+  }
+
+  function findFloatingButtonDock(buttons) {
+    if (!buttons.length) {
+      return null;
+    }
+
+    for (let current = buttons[0].parentElement; current; current = current.parentElement) {
+      if (window.getComputedStyle(current).position === 'fixed'
+        && buttons.every((button) => current.contains(button))) {
+        return current;
+      }
+    }
+    return null;
+  }
+
+  function copyFloatingButtonStyle(button, referenceButton) {
+    const referenceStyle = referenceButton ? window.getComputedStyle(referenceButton) : null;
+    const properties = {
+      width: referenceStyle?.width || '55px',
+      height: referenceStyle?.height || '55px',
+      border: referenceStyle?.border || '1px solid rgb(159, 181, 195)',
+      borderRadius: referenceStyle?.borderRadius || '16px',
+      boxShadow: referenceStyle?.boxShadow || '0 0 15px rgba(101, 119, 134, 0.2), 0 0 3px 1px rgba(101, 119, 134, 0.15)',
+      outline: referenceStyle?.outline || 'none',
+      color: referenceStyle?.color || '#0f1419',
+    };
+
+    Object.entries(properties).forEach(([property, value]) => {
+      button.style.setProperty(property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`), value, 'important');
+    });
+
+    const backgroundColor = referenceStyle?.backgroundColor || 'rgba(255, 255, 255, 0.85)';
+    const channels = backgroundColor.match(/rgba?\(([^)]+)\)/)?.[1]
+      .split(',')
+      .slice(0, 3)
+      .map((channel) => Number.parseFloat(channel));
+    const brightness = channels?.every(Number.isFinite)
+      ? channels[0] * 0.299 + channels[1] * 0.587 + channels[2] * 0.114
+      : 255;
+    button.style.setProperty('--xff-menu-button-background', backgroundColor);
+    button.style.setProperty(
+      '--xff-menu-button-hover-background',
+      brightness < 128 ? 'rgba(255, 255, 255, 0.14)' : 'rgba(15, 20, 25, 0.12)'
+    );
+  }
+
+  function moveMenuHostToFallback(referenceButton) {
+    if (!ui?.host || !document.body) {
+      return;
+    }
+
+    ui.host.classList.remove('xff-docked-menu');
+    ['--xff-dock-right', '--xff-dock-bottom', '--xff-dock-width', '--xff-dock-height']
+      .forEach((property) => ui.host.style.removeProperty(property));
+    if (ui.host.parentElement !== document.body) {
+      document.body.appendChild(ui.host);
+    }
+    copyFloatingButtonStyle(ui.button, referenceButton);
+  }
+
+  function placeMenuHostInFloatingDock() {
+    if (!ui?.host || !document.body) {
+      return false;
+    }
+
+    const buttons = getFloatingDockButtons();
+    const dock = findFloatingButtonDock(buttons);
+    if (!dock) {
+      moveMenuHostToFallback(buttons[0] || null);
+      return false;
+    }
+
+    const dockRect = dock.getBoundingClientRect();
+    const visibleButtons = buttons.map((button) => ({
+      button,
+      rect: button.getBoundingClientRect(),
+    })).filter(({ rect }) => rect.width > 0 && rect.height > 0);
+    const sizeSource = buttons[0];
+    const sourceStyle = sizeSource ? window.getComputedStyle(sizeSource) : null;
+    const sourceContainerStyle = sizeSource?.parentElement
+      ? window.getComputedStyle(sizeSource.parentElement)
+      : null;
+    const buttonHeight = Number.parseFloat(sourceStyle?.height) || 55;
+    const dockWidth = Number.parseFloat(sourceContainerStyle?.width) || 400;
+    let right = 20;
+    let bottom = 146;
+
+    if (visibleButtons.length > 0) {
+      const rightmost = Math.max(...visibleButtons.map(({ rect }) => rect.right));
+      const topmost = Math.min(...visibleButtons.map(({ rect }) => rect.top));
+      const ordered = visibleButtons.map(({ rect }) => rect).sort((a, b) => a.top - b.top);
+      const measuredGaps = ordered.slice(1)
+        .map((rect, index) => rect.top - (ordered[index].top + ordered[index].height))
+        .filter((gap) => gap >= 0);
+      const gap = measuredGaps.length ? Math.min(...measuredGaps) : 12;
+      right = Math.max(0, dockRect.right - rightmost);
+      bottom = Math.max(0, dockRect.bottom - topmost + gap);
+    }
+
+    ui.host.style.setProperty('--xff-dock-right', `${right}px`);
+    ui.host.style.setProperty('--xff-dock-bottom', `${bottom}px`);
+    ui.host.style.setProperty('--xff-dock-width', `${dockWidth}px`);
+    ui.host.style.setProperty('--xff-dock-height', `${buttonHeight}px`);
+    ui.host.classList.add('xff-docked-menu');
+    if (ui.host.parentElement !== dock) {
+      dock.appendChild(ui.host);
+    }
+    copyFloatingButtonStyle(ui.button, buttons[0] || null);
+    return true;
+  }
+
+  function scheduleMenuButtonPlacementRetries() {
+    if (menuButtonPlacementTimer || isDestroyed) {
+      return;
+    }
+
+    let attempts = 0;
+    const maxAttempts = 30;
+    const retry = () => {
+      if (isDestroyed || !ui?.host) {
+        menuButtonPlacementTimer = 0;
+        return;
+      }
+      if (placeMenuHostInFloatingDock()) {
+        menuButtonPlacementTimer = 0;
+        return;
+      }
+
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        menuButtonPlacementTimer = window.setTimeout(retry, 500);
+      } else {
+        menuButtonPlacementTimer = 0;
+      }
+    };
+
+    retry();
   }
 
   function addUiStyles() {
@@ -915,6 +1229,16 @@
         pointer-events: none !important;
       }
 
+      #xff-root.xff-docked-menu {
+        position: absolute !important;
+        top: auto !important;
+        right: var(--xff-dock-right, 20px) !important;
+        bottom: var(--xff-dock-bottom, 146px) !important;
+        left: auto !important;
+        width: var(--xff-dock-width, 400px) !important;
+        height: var(--xff-dock-height, 55px) !important;
+      }
+
       @media (prefers-color-scheme: dark) {
         #xff-root {
           --xff-bg: #000000;
@@ -946,33 +1270,53 @@
       }
 
       #xff-root .xff-fab {
-        width: 54px !important;
-        height: 42px !important;
-        border: 1px solid var(--xff-accent-border) !important;
-        border-radius: 8px !important;
-        background: var(--xff-accent) !important;
-        color: #ffffff !important;
+        width: 55px !important;
+        height: 55px !important;
+        border: 1px solid #9fb5c3 !important;
+        border-radius: 16px !important;
+        background-color: var(--xff-menu-button-background, rgba(255, 255, 255, 0.85)) !important;
+        color: #0f1419 !important;
         padding: 0 !important;
         font-size: 13px !important;
         font-weight: 800 !important;
         letter-spacing: 0 !important;
         text-align: center !important;
-        line-height: 42px !important;
+        line-height: 55px !important;
         cursor: pointer !important;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22) !important;
+        box-shadow: 0 0 15px rgba(101, 119, 134, 0.2), 0 0 3px 1px rgba(101, 119, 134, 0.15) !important;
+        outline: none !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
       }
 
+      #xff-root.xff-docked-menu .xff-fab {
+        position: absolute !important;
+        top: 0 !important;
+        right: 0 !important;
+        bottom: auto !important;
+        left: auto !important;
+      }
+
+      #xff-root .xff-fab {
+        transform-origin: center !important;
+        transition: background-color 120ms ease, transform 120ms ease, filter 120ms ease !important;
+      }
+
       #xff-root .xff-fab:hover {
-        filter: brightness(1.05);
+        background-color: var(--xff-menu-button-hover-background, rgba(15, 20, 25, 0.12)) !important;
+        filter: brightness(1.02) !important;
+        transform: scale(1.06) !important;
+      }
+
+      #xff-root .xff-fab:active {
+        transform: scale(0.97) !important;
       }
 
       #xff-root .xff-panel {
         position: absolute !important;
         right: 0 !important;
-        bottom: 52px !important;
+        bottom: 67px !important;
         width: min(340px, calc(100vw - 28px)) !important;
         max-height: 80vh !important;
         overflow-y: auto !important;
@@ -982,6 +1326,12 @@
         color: var(--xff-text) !important;
         box-shadow: var(--xff-shadow) !important;
         padding: 14px !important;
+      }
+
+      #xff-root.xff-docked-menu .xff-panel {
+        right: 0 !important;
+        bottom: 67px !important;
+        left: auto !important;
       }
 
       #xff-root .xff-panel[hidden] {
@@ -1013,6 +1363,9 @@
       }
 
       #xff-root .xff-close {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
         width: 30px !important;
         height: 30px !important;
         border: 1px solid transparent !important;
@@ -1023,6 +1376,7 @@
         cursor: pointer !important;
         font-size: 20px !important;
         line-height: 1 !important;
+        text-align: center !important;
       }
 
       #xff-root .xff-close:hover {
@@ -1084,6 +1438,14 @@
       #xff-root .xff-unimplemented,
       #xff-root .xff-unimplemented[aria-selected="true"] {
         color: #d93025 !important;
+      }
+
+      #xff-root .xff-tab.xff-subtab[data-subtab="ui-menu-buttons"] {
+        color: var(--xff-text) !important;
+      }
+
+      #xff-root .xff-tab.xff-subtab[data-subtab="ui-floating"] {
+        color: var(--xff-text) !important;
       }
 
       #xff-root .xff-tab-panel[hidden] {
@@ -1153,6 +1515,16 @@
         color: #d93025 !important;
         font-size: 12px !important;
         font-weight: 700 !important;
+      }
+
+      #xff-root .xff-ui-menu-buttons-panel .xff-unimplemented-note {
+        color: var(--xff-text) !important;
+      }
+
+      #xff-root .xff-ui-floating-panel .xff-unimplemented-note,
+      #xff-root .xff-ui-side-panels-panel .xff-unimplemented-note,
+      #xff-root .xff-ui-post-elements-panel > .xff-unimplemented-note:first-child {
+        color: var(--xff-text) !important;
       }
 
       #xff-root .xff-unimplemented-section-title {
@@ -1651,16 +2023,32 @@
     observer = new MutationObserver((mutations) => {
       if (isDestroyed) return;
       let shouldScan = false;
+      let shouldSyncPostUi = false;
       for (const mutation of mutations) {
-        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+        if (mutation.type === 'childList') {
+          const mutationTarget = mutation.target.nodeType === Node.ELEMENT_NODE
+            ? mutation.target
+            : mutation.target.parentElement;
+          const targetIsPost = Boolean(mutationTarget?.closest?.(POST_SELECTOR));
+          const onlyOurActionButtonsWereAdded = mutation.addedNodes.length > 0
+            && Array.from(mutation.addedNodes).every((node) => {
+              return node.nodeType === Node.ELEMENT_NODE
+                && node.matches('.xff-post-action-shortcut-container');
+            });
+          if (targetIsPost && !onlyOurActionButtonsWereAdded) {
+            shouldSyncPostUi = true;
+          }
+
           for (const node of mutation.addedNodes) {
             if (node.nodeType === Node.ELEMENT_NODE) {
               if (node.matches && node.matches(POST_SELECTOR)) {
                 shouldScan = true;
+                shouldSyncPostUi = true;
                 break;
               }
               if (node.querySelector && node.querySelector(POST_SELECTOR)) {
                 shouldScan = true;
+                shouldSyncPostUi = true;
                 break;
               }
             }
@@ -1670,6 +2058,9 @@
       }
       if (shouldScan) {
         scheduleScan();
+      }
+      if (shouldSyncPostUi) {
+        schedulePostUiSync();
       }
     });
     observer.observe(target, {
@@ -1713,8 +2104,19 @@
   }
 
   function isIrritantMutation(mutation) {
+    const floatingButtonSelector = FLOATING_BUTTONS
+      .flatMap(({ buttonSelector, containerSelector }) => [buttonSelector, containerSelector])
+      .join(',');
+    const mutationTarget = mutation.target.nodeType === Node.ELEMENT_NODE
+      ? mutation.target
+      : mutation.target.parentElement;
+    if (mutationTarget?.closest?.(floatingButtonSelector)) {
+      return true;
+    }
+
     if (mutation.type === 'characterData') {
-      return isIrritantHeading(mutation.target.parentElement?.closest('[role="heading"], h1, h2, h3, h4, h5, h6'));
+      return isMainNavigationElement(mutation.target.parentElement)
+        || isIrritantHeading(mutation.target.parentElement?.closest('[role="heading"], h1, h2, h3, h4, h5, h6'));
     }
 
     for (const node of mutation.addedNodes) {
@@ -1726,6 +2128,14 @@
       }
       if (node.nodeType !== Node.ELEMENT_NODE) {
         continue;
+      }
+
+      if (isMainNavigationElement(node)) {
+        return true;
+      }
+
+      if (node.matches(floatingButtonSelector) || node.querySelector(floatingButtonSelector)) {
+        return true;
       }
 
       if (node.matches('[data-testid="sidebarColumn"], [data-testid="trend"], [data-testid="UserCell"], aside[role="complementary"]')
@@ -1742,7 +2152,25 @@
         return true;
       }
     }
+
+    for (const node of mutation.removedNodes) {
+      if (node.nodeType === Node.ELEMENT_NODE
+        && (node.matches(floatingButtonSelector) || node.querySelector(floatingButtonSelector))) {
+        return true;
+      }
+    }
     return false;
+  }
+
+  function isMainNavigationElement(element) {
+    if (!element) {
+      return false;
+    }
+
+    const nav = element.matches?.('nav[role="navigation"]')
+      ? element
+      : element.closest?.('nav[role="navigation"]') || element.querySelector?.('nav[role="navigation"]');
+    return Boolean(nav?.querySelector('[data-testid="AppTabBar_Home_Link"], [data-testid="AppTabBar_Profile_Link"]'));
   }
 
   function isIrritantHeading(heading) {
@@ -1808,6 +2236,111 @@
     return post;
   }
 
+  function syncPostUiElements() {
+    if (isDestroyed) {
+      return;
+    }
+    getPostElements(document).forEach(syncPostUiForPost);
+  }
+
+  function syncPostUiForPost(post) {
+    if (!post?.isConnected) {
+      return;
+    }
+
+    const grokButton = post.querySelector('button[aria-label*="Grok" i]');
+    const grokContainer = grokButton?.parentElement || null;
+    if (grokContainer) {
+      if (settings.hidePostGrokButton) {
+        grokContainer.setAttribute('data-xff-grok-action-hidden', 'true');
+      }
+    }
+    if (!settings.hidePostGrokButton) {
+      post.querySelectorAll('[data-xff-grok-action-hidden="true"]').forEach((element) => {
+        element.removeAttribute('data-xff-grok-action-hidden');
+      });
+    }
+
+    const enabledShortcuts = POST_ACTION_SHORTCUTS.filter((shortcut) => settings[shortcut.setting]);
+    post.querySelectorAll('.xff-post-action-shortcut-container').forEach((element) => {
+      const shortcut = POST_ACTION_SHORTCUTS.find(({ name }) => name === element.dataset.xffPostAction);
+      if (!shortcut || !settings[shortcut.setting]) {
+        element.remove();
+      }
+    });
+    if (enabledShortcuts.length === 0) {
+      return;
+    }
+
+    const menuButton = post.querySelector('[data-testid="caret"]');
+    const actionContainer = grokContainer?.parentElement
+      || findPostActionContainer(menuButton, post);
+    if (!actionContainer) {
+      return;
+    }
+
+    const insertionAnchor = grokContainer?.parentElement === actionContainer
+      ? grokContainer
+      : getDirectChildContaining(actionContainer, menuButton);
+
+    enabledShortcuts.forEach((shortcut) => {
+      const existing = Array.from(actionContainer.children).find((child) => {
+        return child.dataset.xffPostAction === shortcut.name;
+      });
+      if (!existing) {
+        actionContainer.insertBefore(createPostActionShortcut(shortcut), insertionAnchor || null);
+      }
+    });
+  }
+
+  function findPostActionContainer(menuButton, post) {
+    for (let current = menuButton?.parentElement; current && current !== post; current = current.parentElement) {
+      const style = window.getComputedStyle(current);
+      const columnGap = Number.parseFloat(style.columnGap);
+      const gap = Number.parseFloat(style.gap);
+      if (style.display === 'flex' && Math.max(columnGap || 0, gap || 0) > 0
+        && current.querySelector('[data-testid="caret"]')) {
+        return current;
+      }
+    }
+    return null;
+  }
+
+  function getDirectChildContaining(container, descendant) {
+    let current = descendant;
+    while (current && current.parentElement !== container) {
+      current = current.parentElement;
+    }
+    return current?.parentElement === container ? current : null;
+  }
+
+  function createPostActionShortcut(shortcut) {
+    const wrapper = makeElement('div', 'xff-post-action-shortcut-container');
+    wrapper.dataset.xffPostAction = shortcut.name;
+
+    const button = makeElement('button', 'xff-post-action-shortcut');
+    button.type = 'button';
+    button.tabIndex = -1;
+    button.setAttribute('aria-hidden', 'true');
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    shortcut.paths.forEach((pathInfo) => {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', pathInfo.d);
+      if (pathInfo.clipRule) path.setAttribute('clip-rule', pathInfo.clipRule);
+      if (pathInfo.fillRule) path.setAttribute('fill-rule', pathInfo.fillRule);
+      group.append(path);
+    });
+    svg.append(group);
+    button.append(svg);
+    wrapper.append(button);
+    return wrapper;
+  }
+
   function scanPage() {
     if (!isHomePage()) {
       return;
@@ -1824,6 +2357,7 @@
 
     for (const post of posts) {
       totalCount++;
+      syncPostUiForPost(post);
       let hide = post.hasAttribute('data-xff-not-interested')
         || post.hasAttribute('data-xff-not-interested-pending');
 
@@ -2743,11 +3277,20 @@
     ui.hideWhatsHappening.checked = settings.hideWhatsHappening;
     ui.hideWhoToFollow.checked = settings.hideWhoToFollow;
     ui.hideWhoToFollowFeed.checked = settings.hideWhoToFollowFeed;
+    Object.entries(ui.floatingButtonCheckboxes).forEach(([setting, checkbox]) => {
+      checkbox.checked = settings[setting];
+    });
     ui.nameFilterEnabled.checked = settings.nameFilterEnabled;
     ui.nameFilterNotInterested.checked = settings.nameFilterNotInterested;
     ui.nameFilterNotInterested.disabled = !settings.nameFilterEnabled;
     ui.nameFilterIncludeReplies.checked = settings.nameFilterIncludeReplies;
     ui.nameFilterIncludeReplies.disabled = !settings.nameFilterEnabled;
+    Object.entries(ui.menuItemCheckboxes).forEach(([setting, checkbox]) => {
+      checkbox.checked = settings[setting];
+    });
+    Object.entries(ui.postElementCheckboxes).forEach(([setting, checkbox]) => {
+      checkbox.checked = settings[setting];
+    });
     if (document.activeElement !== ui.nameFilterKeywordsInput) {
       ui.nameFilterKeywordsInput.value = settings.nameFilterKeywords || '';
     }
@@ -2850,6 +3393,52 @@
     setElementsHidden(getWhatsHappeningPanels(), settings.hideWhatsHappening);
     setElementsHidden(getWhoToFollowPanels(), settings.hideWhoToFollow);
     setElementsHidden(getWhoToFollowFeedModules(), settings.hideWhoToFollowFeed, false);
+    hideFloatingButtons();
+    hideNavigationMenuItems();
+    if (!placeMenuHostInFloatingDock()) {
+      scheduleMenuButtonPlacementRetries();
+    }
+  }
+
+  function hideFloatingButtons() {
+    document.querySelectorAll('[data-xff-floating-button-hidden="true"]').forEach((element) => {
+      const button = FLOATING_BUTTONS.find(({ buttonSelector, containerSelector }) => {
+        return element.matches(containerSelector) || element.matches(buttonSelector);
+      });
+      if (!button || !settings[button.setting]) {
+        element.removeAttribute('data-xff-floating-button-hidden');
+      }
+    });
+
+    FLOATING_BUTTONS.forEach(({ setting, buttonSelector, containerSelector }) => {
+      document.querySelectorAll(buttonSelector).forEach((button) => {
+        const target = button.closest(containerSelector) || button;
+        if (settings[setting]) {
+          target.setAttribute('data-xff-floating-button-hidden', 'true');
+        } else {
+          target.removeAttribute('data-xff-floating-button-hidden');
+        }
+      });
+    });
+  }
+
+  function hideNavigationMenuItems() {
+    const homeLink = document.querySelector('[data-testid="AppTabBar_Home_Link"]');
+    const nav = homeLink?.closest('nav[role="navigation"]')
+      || document.querySelector('nav[role="navigation"]');
+    if (!nav) {
+      return;
+    }
+
+    NAV_MENU_ITEMS.forEach(({ setting, selector }) => {
+      nav.querySelectorAll(selector).forEach((element) => {
+        if (settings[setting]) {
+          element.setAttribute('data-xff-menu-hidden', 'true');
+        } else {
+          element.removeAttribute('data-xff-menu-hidden');
+        }
+      });
+    });
   }
 
   function setElementsHidden(elements, shouldHide, expandToCard = true) {
