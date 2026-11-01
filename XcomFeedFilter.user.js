@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.3.4
+// @version      1.3.5
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.3.4';
+    const SCRIPT_VERSION = '1.3.5';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
     const POST_SELECTOR = 'article[data-testid="tweet"], article[role="article"]';
     const AUTHOR_NAME_SELECTOR = '[data-testid="User-Name"]';
@@ -519,7 +519,7 @@
     const postSubtabButtons = [
       makeSubtabButton('posts-verified', 'Галочники'),
       makeSubtabButton('posts-names', 'Имена'),
-      makeSubtabButton('posts-content', 'Содержимое', true),
+      makeSubtabButton('posts-content', 'Содержимое'),
       makeSubtabButton('posts-other', 'Прочее'),
     ];
     postSubtabs.append(...postSubtabButtons);
@@ -1513,6 +1513,7 @@
         color: var(--xff-text) !important;
       }
 
+      #xff-root .xff-tab.xff-subtab[data-subtab="posts-content"],
       #xff-root .xff-tab.xff-subtab[data-subtab="posts-other"] {
         color: var(--xff-text) !important;
       }
