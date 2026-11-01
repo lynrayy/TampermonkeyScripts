@@ -29,10 +29,23 @@ Tested only with Russian language but may work with English too
 
 ## X.com (Twitter)
 ### - ⛓️‍💥 X.com feed filter | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js)
-Adds filter button. You can hide:
-- Posts from authors with blacklisted words/flags
-- Too old/fresh posts
-- Premium ad, What happens, Who to follow blocks
+Adds filter button. English supported.
+
+#### You can hide:
+- Posts from authors whose nicknames contain words from the blacklist
+- Too old/new posts
+- Different blocks on the right
+- Posts from authors with check marks
+- Posts with words from the blacklist
+- Purely reposting posts
+- Quote reposts (quote retweet)
+- Various interface elements - from menu buttons to blocks on the right
+
+#### You can add:
+- Quick actions with the authors of the post - dislike, ignore, blacklist
+- Managing posts using arrows (↓ next post, ↑ previous, → like, ← not interesting)
+#### Allows:
+Automatically display “not interested” on filtered posts (the setting is individual for each filter)
 
 ## Bloomly.fun
 ### - 👁‍🗨 Remove distractions | [INSTALL](https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/BloomlyUndistractable.user.js)
