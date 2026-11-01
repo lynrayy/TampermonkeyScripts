@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.2.12
+// @version      1.2.13
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.2.12';
+    const SCRIPT_VERSION = '1.2.13';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
 
     const RECENCY_UNITS = {
@@ -58,6 +58,7 @@
         nameFilterIncludeReplies: false,
         nameFilterKeywords: '',
         tab: 'recency',
+        subtab: 'posts-verified',
         recencyMinValue: 0,
         recencyMinUnit: 'months',
         recencyMaxValue: 0,
@@ -143,6 +144,16 @@
       nameFilterIncludeReplies: Boolean(value.nameFilterIncludeReplies),
       nameFilterKeywords: typeof value.nameFilterKeywords === 'string' ? value.nameFilterKeywords : '',
       tab: ['recency', 'other', 'irritants', 'db'].includes(value.tab) ? value.tab : 'recency',
+      subtab: [
+        'posts-verified',
+        'posts-names',
+        'posts-content',
+        'posts-other',
+        'ui-floating',
+        'ui-side-panels',
+        'ui-menu-buttons',
+        'ui-post-elements',
+      ].includes(value.subtab) ? value.subtab : 'posts-verified',
       recencyMinValue: Math.max(0, toNumber(value.recencyMinValue, 0)),
       recencyMinUnit: RECENCY_UNITS[value.recencyMinUnit] ? value.recencyMinUnit : 'months',
       recencyMaxValue: Math.max(0, toNumber(value.recencyMaxValue, 0)),
@@ -270,9 +281,38 @@
     const tabBar = makeElement('div', 'xff-tabs');
     const tabRecency = makeButton('xff-tab xff-tab-recency', 'Новизна');
     const tabOther = makeButton('xff-tab xff-tab-other', 'Посты');
-    const tabIrritants = makeButton('xff-tab xff-tab-irritants', 'Раздражители');
+    const tabIrritants = makeButton('xff-tab xff-tab-irritants', 'UI');
     const tabDb = makeButton('xff-tab xff-tab-db', 'БД');
     tabBar.append(tabRecency, tabOther, tabIrritants, tabDb);
+
+    const tabDivider = makeElement('div', 'xff-tab-divider');
+    const subtabBar = makeElement('div', 'xff-subtabs');
+    const makeSubtabButton = (id, label, unimplemented = false) => {
+      const subtabButton = makeButton(
+        'xff-tab xff-subtab' + (unimplemented ? ' xff-unimplemented' : ''),
+        label
+      );
+      subtabButton.dataset.subtab = id;
+      subtabButton.addEventListener('click', () => setSubtab(id));
+      return subtabButton;
+    };
+    const postSubtabs = makeElement('div', 'xff-subtab-group xff-post-subtabs');
+    const postSubtabButtons = [
+      makeSubtabButton('posts-verified', 'Галочники'),
+      makeSubtabButton('posts-names', 'Имена'),
+      makeSubtabButton('posts-content', 'Содержимое', true),
+      makeSubtabButton('posts-other', 'Прочее', true),
+    ];
+    postSubtabs.append(...postSubtabButtons);
+    const uiSubtabs = makeElement('div', 'xff-subtab-group xff-ui-subtabs');
+    const uiSubtabButtons = [
+      makeSubtabButton('ui-floating', 'Плавающие кнопки', true),
+      makeSubtabButton('ui-side-panels', 'Панели справа'),
+      makeSubtabButton('ui-menu-buttons', 'Кнопки меню', true),
+      makeSubtabButton('ui-post-elements', 'Элементы постов', true),
+    ];
+    uiSubtabs.append(...uiSubtabButtons);
+    subtabBar.append(postSubtabs, uiSubtabs);
 
     const recencyTab = makeElement('div', 'xff-tab-panel xff-recency-tab');
     const otherTab = makeElement('div', 'xff-tab-panel xff-other-tab');
@@ -332,17 +372,17 @@
     const hidePremiumSwitch = makeElement('label', 'xff-switch');
     const hidePremium = makeElement('input', 'xff-hide-premium');
     hidePremium.type = 'checkbox';
-    hidePremiumSwitch.append(hidePremium, makeElement('span', '', 'Скрыть рекламу Premium'));
+    hidePremiumSwitch.append(hidePremium, makeElement('span', '', 'Реклама Premium'));
 
     const hideWhatsHappeningSwitch = makeElement('label', 'xff-switch');
     const hideWhatsHappening = makeElement('input', 'xff-hide-whats-happening');
     hideWhatsHappening.type = 'checkbox';
-    hideWhatsHappeningSwitch.append(hideWhatsHappening, makeElement('span', '', 'Скрыть Что происходит'));
+    hideWhatsHappeningSwitch.append(hideWhatsHappening, makeElement('span', '', 'Что происходит'));
 
     const hideWhoToFollowSwitch = makeElement('label', 'xff-switch');
     const hideWhoToFollow = makeElement('input', 'xff-hide-who-to-follow');
     hideWhoToFollow.type = 'checkbox';
-    hideWhoToFollowSwitch.append(hideWhoToFollow, makeElement('span', '', 'Скрыть Кого читать'));
+    hideWhoToFollowSwitch.append(hideWhoToFollow, makeElement('span', '', 'Кого читать'));
 
     const nameFilterSwitch = makeElement('label', 'xff-switch');
     const nameFilterEnabled = makeElement('input', 'xff-name-filter-enabled');
@@ -368,12 +408,142 @@
     nameFilterIncludeReplies.type = 'checkbox';
     nameFilterIncludeRepliesSwitch.append(nameFilterIncludeReplies, makeElement('span', '', 'Также учитывать ответы'));
 
-    otherTab.append(hideVerifiedSwitch, hideVerifiedRepliesSwitch, hideVerifiedNotInterestedSwitch, hideVerifiedUseDBSwitch, hideVerifiedDBOnlyExceptionsSwitch, nameFilterSwitch, nameFilterKeywordsField, nameFilterNotInterestedSwitch, nameFilterIncludeRepliesSwitch);
-    irritantsTab.append(hidePremiumSwitch, hideWhatsHappeningSwitch, hideWhoToFollowSwitch);
+    const postVerifiedPanel = makeElement('div', 'xff-subtab-panel xff-post-verified-panel');
+    postVerifiedPanel.append(hideVerifiedSwitch, hideVerifiedRepliesSwitch, hideVerifiedNotInterestedSwitch, hideVerifiedUseDBSwitch, hideVerifiedDBOnlyExceptionsSwitch);
+    const postNamesPanel = makeElement('div', 'xff-subtab-panel xff-post-names-panel');
+    postNamesPanel.append(nameFilterSwitch, nameFilterKeywordsField, nameFilterNotInterestedSwitch, nameFilterIncludeRepliesSwitch);
+    const postContentPanel = makeElement('div', 'xff-subtab-panel xff-post-content-panel');
+    const blacklistSwitch = makeElement('label', 'xff-switch xff-unimplemented');
+    const blacklistEnabled = makeElement('input', 'xff-unimplemented-control');
+    blacklistEnabled.type = 'checkbox';
+    blacklistEnabled.disabled = true;
+    blacklistSwitch.append(blacklistEnabled, makeElement('span', '', 'Чёрный список слов'));
+
+    const blacklistKeywordsField = makeElement('label', 'xff-name-filter-field xff-unimplemented');
+    const blacklistKeywordsCaption = makeElement('span', '', 'Запрещённые слова (через запятую)');
+    const blacklistKeywordsInput = makeElement('input', 'xff-unimplemented-control');
+    blacklistKeywordsInput.type = 'text';
+    blacklistKeywordsInput.placeholder = 'слово, фраза, эмодзи';
+    blacklistKeywordsInput.autocomplete = 'off';
+    blacklistKeywordsInput.spellcheck = false;
+    blacklistKeywordsInput.disabled = true;
+    blacklistKeywordsField.append(blacklistKeywordsCaption, blacklistKeywordsInput);
+
+    const blacklistNotInterestedSwitch = makeElement('label', 'xff-switch xff-switch-child xff-unimplemented');
+    const blacklistNotInterested = makeElement('input', 'xff-unimplemented-control');
+    blacklistNotInterested.type = 'checkbox';
+    blacklistNotInterested.disabled = true;
+    blacklistNotInterestedSwitch.append(blacklistNotInterested, makeElement('span', '', 'Прожимать "Не интересно"'));
+
+    const blacklistIncludeRepliesSwitch = makeElement('label', 'xff-switch xff-switch-child xff-unimplemented');
+    const blacklistIncludeReplies = makeElement('input', 'xff-unimplemented-control');
+    blacklistIncludeReplies.type = 'checkbox';
+    blacklistIncludeReplies.disabled = true;
+    blacklistIncludeRepliesSwitch.append(blacklistIncludeReplies, makeElement('span', '', 'Также учитывать ответы'));
+    postContentPanel.append(blacklistSwitch, blacklistKeywordsField, blacklistNotInterestedSwitch, blacklistIncludeRepliesSwitch);
+
+    const postOtherPanel = makeElement('div', 'xff-subtab-panel xff-post-other-panel');
+
+    const retweetsOnlySwitch = makeElement('label', 'xff-switch xff-switch-parent xff-unimplemented');
+    const retweetsOnly = makeElement('input', 'xff-unimplemented-control');
+    retweetsOnly.type = 'checkbox';
+    retweetsOnly.disabled = true;
+    retweetsOnlySwitch.append(retweetsOnly, makeElement('span', '', 'Скрывать чисто репосты'));
+
+    const retweetsNotInterestedSwitch = makeElement('label', 'xff-switch xff-switch-child xff-unimplemented');
+    const retweetsNotInterested = makeElement('input', 'xff-unimplemented-control');
+    retweetsNotInterested.type = 'checkbox';
+    retweetsNotInterested.disabled = true;
+    retweetsNotInterestedSwitch.append(retweetsNotInterested, makeElement('span', '', 'Прожимать «Не интересно»'));
+
+    const hideViewedSwitch = makeElement('label', 'xff-switch xff-unimplemented');
+    const hideViewed = makeElement('input', 'xff-unimplemented-control');
+    hideViewed.type = 'checkbox';
+    hideViewed.disabled = true;
+    hideViewedSwitch.append(hideViewed, makeElement('span', '', 'Скрывать просмотренные'));
+
+    const hideRepliesSwitch = makeElement('label', 'xff-switch xff-unimplemented');
+    const hideReplies = makeElement('input', 'xff-unimplemented-control');
+    hideReplies.type = 'checkbox';
+    hideReplies.disabled = true;
+    hideRepliesSwitch.append(hideReplies, makeElement('span', '', 'Скрывать посты-ответы'));
+
+    postOtherPanel.append(retweetsOnlySwitch, retweetsNotInterestedSwitch, hideViewedSwitch, hideRepliesSwitch);
+    otherTab.append(postVerifiedPanel, postNamesPanel, postContentPanel, postOtherPanel);
+
+    const uiFloatingPanel = makeElement('div', 'xff-subtab-panel xff-ui-floating-panel');
+    const uiSidePanelsPanel = makeElement('div', 'xff-subtab-panel xff-ui-side-panels-panel');
+    const uiMenuButtonsPanel = makeElement('div', 'xff-subtab-panel xff-ui-menu-buttons-panel');
+    const uiPostElementsPanel = makeElement('div', 'xff-subtab-panel xff-ui-post-elements-panel');
+
+    const makeUnavailableSwitch = (label, nested = false) => {
+      const option = makeElement(
+        'label',
+        'xff-switch xff-unimplemented' + (nested ? ' xff-switch-child' : '')
+      );
+      const checkbox = makeElement('input', 'xff-unimplemented-control');
+      checkbox.type = 'checkbox';
+      checkbox.disabled = true;
+      option.append(checkbox, makeElement('span', '', label));
+      return option;
+    };
+    const makeUnavailableNote = (text, section = false) => makeElement(
+      'div',
+      'xff-unimplemented-note' + (section ? ' xff-unimplemented-section-title' : ''),
+      text
+    );
+
+    uiSidePanelsPanel.append(
+      makeUnavailableNote('Скрывать следующие панели:'),
+      hidePremiumSwitch,
+      hideWhatsHappeningSwitch,
+      hideWhoToFollowSwitch
+    );
+
+    uiFloatingPanel.append(
+      makeUnavailableNote('Скрывать следующие кнопки:'),
+      makeUnavailableSwitch('Grok'),
+      makeUnavailableSwitch('Чат')
+    );
+
+    const menuItems = [
+      'Главная',
+      'Обзор',
+      'Уведомления',
+      'Чат',
+      'Звонки',
+      'Grok',
+      'История',
+      'Творческая студия',
+      'Premium',
+      'Профиль',
+      'Ещё',
+    ];
+    uiMenuButtonsPanel.append(makeUnavailableNote('Скрывать следующие пункты меню:'));
+    menuItems.forEach((item) => uiMenuButtonsPanel.append(makeUnavailableSwitch(item)));
+    uiMenuButtonsPanel.append(
+      makeUnavailableNote('Другие опции', true),
+      makeUnavailableSwitch('Изменить иконку История')
+    );
+
+    uiPostElementsPanel.append(
+      makeUnavailableNote('Скрывать следующие кнопки:'),
+      makeUnavailableSwitch('Кнопка Grok')
+    );
+    irritantsTab.append(uiFloatingPanel, uiSidePanelsPanel, uiMenuButtonsPanel, uiPostElementsPanel);
 
     const status = makeElement('div', 'xff-status');
 
     const dbClearBtn = makeButton('xff-db-clear', 'Очистить базу');
+    const dbClearExceptBtn = makeButton('xff-db-clear-except xff-unimplemented', 'Очистить кроме исключений');
+    dbClearExceptBtn.disabled = true;
+    const dbSearchField = makeElement('label', 'xff-db-search-field xff-unimplemented');
+    dbSearchField.append(makeElement('span', '', 'Поиск'));
+    const dbSearch = makeElement('input', 'xff-db-search');
+    dbSearch.type = 'search';
+    dbSearch.placeholder = 'Поиск';
+    dbSearch.disabled = true;
+    dbSearchField.append(dbSearch);
     const dbTable = makeElement('table', 'xff-db-table');
     const dbThead = makeElement('thead');
     const dbTrHead = makeElement('tr');
@@ -384,9 +554,15 @@
     dbThead.append(dbTrHead);
     dbTable.append(dbThead, dbTbody);
 
-    dbTab.append(dbClearBtn, dbTable);
+    const dbExtraActions = makeElement('div', 'xff-db-extra-actions');
+    const dbExportBtn = makeButton('xff-db-extra-button xff-unimplemented', 'Экспорт');
+    const dbImportBtn = makeButton('xff-db-extra-button xff-unimplemented', 'Импорт');
+    dbExportBtn.disabled = true;
+    dbImportBtn.disabled = true;
+    dbExtraActions.append(dbExportBtn, dbImportBtn);
+    dbTab.append(dbClearBtn, dbClearExceptBtn, dbSearchField, dbTable, dbExtraActions);
 
-    panel.append(topRow, tabBar, recencyTab, otherTab, irritantsTab, dbTab, status);
+    panel.append(topRow, tabBar, tabDivider, subtabBar, recencyTab, otherTab, irritantsTab, dbTab, status);
     host.append(button, panel);
     applyBaseUiStyles(host, button, panel);
     document.body.appendChild(host);
@@ -406,6 +582,23 @@
       tabOther,
       tabIrritants,
       tabDb,
+      subtabBar,
+      postSubtabs,
+      uiSubtabs,
+      postSubtabButtons,
+      uiSubtabButtons,
+      postPanels: [
+        { id: 'posts-verified', element: postVerifiedPanel },
+        { id: 'posts-names', element: postNamesPanel },
+        { id: 'posts-content', element: postContentPanel },
+        { id: 'posts-other', element: postOtherPanel },
+      ],
+      uiPanels: [
+        { id: 'ui-floating', element: uiFloatingPanel },
+        { id: 'ui-side-panels', element: uiSidePanelsPanel },
+        { id: 'ui-menu-buttons', element: uiMenuButtonsPanel },
+        { id: 'ui-post-elements', element: uiPostElementsPanel },
+      ],
       recencyTab,
       otherTab,
       irritantsTab,
@@ -774,7 +967,35 @@
         color: var(--xff-accent) !important;
       }
 
+      #xff-root .xff-tab-divider {
+        border-top: 1px solid var(--xff-border) !important;
+        margin: 10px 0 8px !important;
+      }
+
+      #xff-root .xff-subtab-group {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 6px !important;
+      }
+
+      #xff-root .xff-subtab {
+        min-height: 30px !important;
+        padding: 5px 7px !important;
+        font-size: 12px !important;
+      }
+
+      #xff-root .xff-unimplemented,
+      #xff-root .xff-unimplemented[aria-selected="true"] {
+        color: #d93025 !important;
+      }
+
       #xff-root .xff-tab-panel[hidden] {
+        display: none !important;
+      }
+
+      #xff-root .xff-subtabs[hidden],
+      #xff-root .xff-subtab-group[hidden],
+      #xff-root .xff-subtab-panel[hidden] {
         display: none !important;
       }
 
@@ -809,6 +1030,36 @@
       #xff-root .xff-switch-child input:disabled + span {
         opacity: 0.5 !important;
         cursor: not-allowed !important;
+      }
+
+      #xff-root .xff-switch.xff-unimplemented,
+      #xff-root .xff-db-search-field.xff-unimplemented {
+        color: #d93025 !important;
+      }
+
+      #xff-root .xff-unimplemented-control {
+        cursor: not-allowed !important;
+      }
+
+      #xff-root .xff-switch input.xff-unimplemented-control {
+        opacity: 0.65 !important;
+        cursor: not-allowed !important;
+      }
+
+      #xff-root .xff-switch-child.xff-unimplemented input:disabled + span {
+        opacity: 1 !important;
+        cursor: not-allowed !important;
+      }
+
+      #xff-root .xff-unimplemented-note {
+        margin-top: 12px !important;
+        color: #d93025 !important;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+      }
+
+      #xff-root .xff-unimplemented-section-title {
+        margin-top: 18px !important;
       }
 
       #xff-root .xff-recency-field {
@@ -880,6 +1131,10 @@
         font-weight: 700 !important;
       }
 
+      #xff-root .xff-name-filter-field.xff-unimplemented {
+        color: #d93025 !important;
+      }
+
       #xff-root .xff-name-filter-field input {
         width: 100% !important;
         min-width: 0 !important;
@@ -897,6 +1152,12 @@
       #xff-root .xff-name-filter-field input:focus {
         border-color: var(--xff-accent) !important;
         box-shadow: 0 0 0 3px var(--xff-accent-soft) !important;
+      }
+
+      #xff-root .xff-name-filter-field input:disabled {
+        color: #d93025 !important;
+        opacity: 0.75 !important;
+        cursor: not-allowed !important;
       }
 
       #xff-root .xff-preset-row {
@@ -965,6 +1226,63 @@
 
       #xff-root .xff-db-clear:hover {
         border-color: var(--xff-hover-border) !important;
+      }
+
+      #xff-root .xff-db-clear-except,
+      #xff-root .xff-db-extra-button {
+        min-height: 32px !important;
+        border: 1px solid var(--xff-border) !important;
+        border-radius: 6px !important;
+        background: var(--xff-input-bg) !important;
+        color: var(--xff-text) !important;
+        padding: 6px 8px !important;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        cursor: pointer !important;
+        outline: none !important;
+      }
+
+      #xff-root .xff-db-clear-except {
+        width: 100% !important;
+        margin-bottom: 8px !important;
+      }
+
+      #xff-root .xff-db-extra-actions {
+        display: flex !important;
+        gap: 8px !important;
+        margin-top: 8px !important;
+      }
+
+      #xff-root .xff-db-extra-button {
+        flex: 1 !important;
+      }
+
+      #xff-root .xff-db-search-field {
+        display: grid !important;
+        gap: 5px !important;
+        margin: 4px 0 8px !important;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+      }
+
+      #xff-root .xff-db-search {
+        width: 100% !important;
+        min-height: 34px !important;
+        border: 1px solid var(--xff-border) !important;
+        border-radius: 6px !important;
+        background: var(--xff-input-bg) !important;
+        color: #d93025 !important;
+        padding: 7px 9px !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+      }
+
+      #xff-root .xff-db-clear-except:disabled,
+      #xff-root .xff-db-extra-button:disabled,
+      #xff-root .xff-db-search:disabled {
+        color: #d93025 !important;
+        opacity: 0.75 !important;
+        cursor: not-allowed !important;
       }
 
       #xff-root .xff-db-delete {
@@ -1289,7 +1607,6 @@
 
     let hiddenCount = 0;
     let totalCount = 0;
-    let notInterestedCount = 0;
 
     for (const post of posts) {
       totalCount++;
@@ -1300,7 +1617,6 @@
           // Without DB: hide all verified posts
           if (settings.hideVerifiedNotInterested) {
             clickNotInterested(post);
-            notInterestedCount++;
           } else {
             hide = true;
           }
@@ -1345,7 +1661,6 @@
           if (shouldHide) {
             if (settings.hideVerifiedNotInterested) {
               clickNotInterested(post);
-              notInterestedCount++;
             } else {
               hide = true;
             }
@@ -1360,7 +1675,6 @@
       if (!hide && settings.nameFilterEnabled && isNameFiltered(post, settings.nameFilterIncludeReplies)) {
         if (settings.nameFilterNotInterested) {
           clickNotInterested(post);
-          notInterestedCount++;
         } else {
           hide = true;
         }
@@ -1388,7 +1702,7 @@
       }
     }
 
-    updateStatus(hiddenCount, totalCount, notInterestedCount);
+    updateStatus(hiddenCount, totalCount);
 
     hideIrritantElements();
   }
@@ -1803,6 +2117,27 @@
 
   function setTab(tab) {
     settings.tab = ['recency', 'other', 'irritants', 'db'].includes(tab) ? tab : 'recency';
+    if (settings.tab === 'other' && !settings.subtab.startsWith('posts-')) {
+      settings.subtab = 'posts-verified';
+    } else if (settings.tab === 'irritants' && !settings.subtab.startsWith('ui-')) {
+      settings.subtab = 'ui-side-panels';
+    }
+    saveSettings();
+    renderUi();
+  }
+
+  function setSubtab(subtab) {
+    const validSubtabs = [
+      'posts-verified',
+      'posts-names',
+      'posts-content',
+      'posts-other',
+      'ui-floating',
+      'ui-side-panels',
+      'ui-menu-buttons',
+      'ui-post-elements',
+    ];
+    settings.subtab = validSubtabs.includes(subtab) ? subtab : 'posts-verified';
     saveSettings();
     renderUi();
   }
@@ -1861,6 +2196,11 @@
     }
 
     settings = normalizeSettings(settings);
+    if (settings.tab === 'other' && !settings.subtab.startsWith('posts-')) {
+      settings.subtab = 'posts-verified';
+    } else if (settings.tab === 'irritants' && !settings.subtab.startsWith('ui-')) {
+      settings.subtab = 'ui-side-panels';
+    }
 
     ui.panel.hidden = !settings.panelOpen;
     ui.button.setAttribute('aria-expanded', String(settings.panelOpen));
@@ -1873,6 +2213,21 @@
     ui.otherTab.hidden = settings.tab !== 'other';
     ui.irritantsTab.hidden = settings.tab !== 'irritants';
     ui.dbTab.hidden = settings.tab !== 'db';
+    ui.subtabBar.hidden = settings.tab !== 'other' && settings.tab !== 'irritants';
+    ui.postSubtabs.hidden = settings.tab !== 'other';
+    ui.uiSubtabs.hidden = settings.tab !== 'irritants';
+    ui.postSubtabButtons.forEach((button) => {
+      button.setAttribute('aria-selected', String(button.dataset.subtab === settings.subtab));
+    });
+    ui.uiSubtabButtons.forEach((button) => {
+      button.setAttribute('aria-selected', String(button.dataset.subtab === settings.subtab));
+    });
+    ui.postPanels.forEach(({ id, element }) => {
+      element.hidden = settings.tab !== 'other' || settings.subtab !== id;
+    });
+    ui.uiPanels.forEach(({ id, element }) => {
+      element.hidden = settings.tab !== 'irritants' || settings.subtab !== id;
+    });
 
     ui.recencyEnabled.checked = settings.recencyEnabled;
     ui.hideVerified.checked = settings.hideVerified;
@@ -1908,26 +2263,12 @@
     renderDbTable();
   }
 
-  function updateStatus(hiddenCount, totalCount, notInterestedCount) {
+  function updateStatus(hiddenCount, totalCount) {
     if (!ui || !ui.status) {
       return;
     }
 
-    const recencyState = settings.recencyEnabled ? 'вкл' : 'выкл';
-    const verifiedState = settings.hideVerified ? 'вкл' : 'выкл';
-    const verifiedRepliesState = settings.hideVerifiedReplies ? 'вкл' : 'выкл';
-    const verifiedNotInterestedState = settings.hideVerifiedNotInterested ? 'вкл' : 'выкл';
-    const verifiedUseDBState = settings.hideVerifiedUseDB ? 'вкл' : 'выкл';
-    const verifiedDBOnlyExceptionsState = settings.hideVerifiedDBOnlyExceptions ? 'вкл' : 'выкл';
-    const premiumState = settings.hidePremium ? 'вкл' : 'выкл';
-    const whatsHappeningState = settings.hideWhatsHappening ? 'вкл' : 'выкл';
-    const whoToFollowState = settings.hideWhoToFollow ? 'вкл' : 'выкл';
-    const nameFilterState = settings.nameFilterEnabled ? 'вкл' : 'выкл';
-    const notInterestedState = settings.nameFilterNotInterested ? 'вкл' : 'выкл';
-    const includeRepliesState = settings.nameFilterIncludeReplies ? 'вкл' : 'выкл';
-    ui.status.textContent =
-      `Новизна: ${recencyState}. Галочники: ${verifiedState}. Ответы галочникам: ${verifiedRepliesState}. Прожимать неинтересно: ${verifiedNotInterestedState}. БД: ${verifiedUseDBState}. Только исключения: ${verifiedDBOnlyExceptionsState}. Премиум: ${premiumState}. Что происходит: ${whatsHappeningState}. Кого читать: ${whoToFollowState}. Фильтр имён: ${nameFilterState}. Неинтересное: ${notInterestedState}. Ответы: ${includeRepliesState}. ` +
-      `Скрыто: ${hiddenCount}. Прожито "неинтересно": ${notInterestedCount}. Всего постов: ${totalCount}.`;
+    ui.status.textContent = `Всего постов: ${totalCount}. Скрыто: ${hiddenCount}.`;
   }
 
   function renderDbTable() {
