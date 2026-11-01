@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X.com Feed Filter
 // @namespace    https://github.com/local/x-feed-filter
-// @version      1.3
+// @version      1.3.1
 // @updateURL    https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @downloadURL  https://github.com/lynrayy/TampermonkeyScripts/raw/refs/heads/master/XcomFeedFilter.user.js
 // @description  Filters X (Twitter) feed posts by recency and hides posts from verified users
@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '1.3';
+    const SCRIPT_VERSION = '1.3.1';
     const STORAGE_KEY = 'x-feed-filter-settings-v1';
     const POST_SELECTOR = 'article[data-testid="tweet"], article[role="article"]';
     const AUTHOR_NAME_SELECTOR = '[data-testid="User-Name"]';
@@ -121,6 +121,7 @@
         hideWhoToFollowFeed: false,
         hidePureRetweets: false,
         hidePureRetweetsNotInterested: false,
+        hideReplies: false,
         hideFloatingGrok: false,
         hideFloatingChat: false,
         hidePostGrokButton: false,
@@ -295,6 +296,7 @@
       hideWhoToFollowFeed: Boolean(value.hideWhoToFollowFeed),
       hidePureRetweets: Boolean(value.hidePureRetweets),
       hidePureRetweetsNotInterested: Boolean(value.hidePureRetweetsNotInterested),
+      hideReplies: Boolean(value.hideReplies),
       hideFloatingGrok: Boolean(value.hideFloatingGrok),
       hideFloatingChat: Boolean(value.hideFloatingChat),
       hidePostGrokButton: Boolean(value.hidePostGrokButton),
@@ -510,7 +512,7 @@
       makeSubtabButton('posts-verified', 'Галочники'),
       makeSubtabButton('posts-names', 'Имена'),
       makeSubtabButton('posts-content', 'Содержимое', true),
-      makeSubtabButton('posts-other', 'Прочее', true),
+      makeSubtabButton('posts-other', 'Прочее'),
     ];
     postSubtabs.append(...postSubtabButtons);
     const uiSubtabs = makeElement('div', 'xff-subtab-group xff-ui-subtabs');
@@ -669,10 +671,9 @@
     hideViewed.disabled = true;
     hideViewedSwitch.append(hideViewed, makeElement('span', '', 'Скрывать просмотренные'));
 
-    const hideRepliesSwitch = makeElement('label', 'xff-switch xff-unimplemented');
-    const hideReplies = makeElement('input', 'xff-unimplemented-control');
+    const hideRepliesSwitch = makeElement('label', 'xff-switch');
+    const hideReplies = makeElement('input', 'xff-hide-replies');
     hideReplies.type = 'checkbox';
-    hideReplies.disabled = true;
     hideRepliesSwitch.append(hideReplies, makeElement('span', '', 'Скрывать посты-ответы'));
 
     const hideWhoToFollowFeedSwitch = makeElement('label', 'xff-switch');
@@ -851,6 +852,7 @@
       hideWhoToFollowFeed,
       hidePureRetweets: retweetsOnly,
       hidePureRetweetsNotInterested: retweetsNotInterested,
+      hideReplies,
       nameFilterEnabled,
       nameFilterKeywordsInput,
       nameFilterNotInterested,
@@ -988,6 +990,13 @@
 
     ui.hidePureRetweetsNotInterested.addEventListener('change', () => {
       settings.hidePureRetweetsNotInterested = ui.hidePureRetweetsNotInterested.checked;
+      saveSettings();
+      renderUi();
+      scheduleScan();
+    });
+
+    ui.hideReplies.addEventListener('change', () => {
+      settings.hideReplies = ui.hideReplies.checked;
       saveSettings();
       renderUi();
       scheduleScan();
@@ -1466,6 +1475,10 @@
       }
 
       #xff-root .xff-tab.xff-subtab[data-subtab="ui-menu-buttons"] {
+        color: var(--xff-text) !important;
+      }
+
+      #xff-root .xff-tab.xff-subtab[data-subtab="posts-other"] {
         color: var(--xff-text) !important;
       }
 
@@ -2246,6 +2259,28 @@
     return /репост|retweeted|reposted/.test(label);
   }
 
+  function isReplyPost(post) {
+    const context = post.querySelector('[data-testid="socialContext"]');
+    const contextLabel = (context?.textContent || '').normalize('NFKC').toLowerCase();
+    if (/replying\s+to|in\s+reply\s+to|в\s+ответ|ответ\s+пользователю/.test(contextLabel)) {
+      return true;
+    }
+
+    if (post.querySelector('[data-testid="quoteTweet"], [data-testid="quote-tweet"], [data-testid="quotedTweet"]')) {
+      return true;
+    }
+
+    // X currently renders quote cards without a dedicated data-testid.
+    // Their exact "Quote" / "Цитата" marker is outside the author's tweet text.
+    return Array.from(post.querySelectorAll('span')).some((element) => {
+      if (element.closest('[data-testid="tweetText"]')) {
+        return false;
+      }
+      const label = (element.textContent || '').normalize('NFKC').trim().toLowerCase();
+      return label === 'quote' || label === 'цитата';
+    });
+  }
+
   function getPostWrapper(post) {
     const xFeedCell = post.closest('[data-testid="cellInnerDiv"]');
     if (xFeedCell) {
@@ -2404,6 +2439,10 @@
         } else {
           hide = true;
         }
+      }
+
+      if (!hide && settings.hideReplies && isReplyPost(post)) {
+        hide = true;
       }
 
       if (!hide && settings.hideVerified && isVerifiedPost(post)) {
@@ -3404,6 +3443,7 @@
     ui.hidePureRetweets.checked = settings.hidePureRetweets;
     ui.hidePureRetweetsNotInterested.checked = settings.hidePureRetweetsNotInterested;
     ui.hidePureRetweetsNotInterested.disabled = !settings.hidePureRetweets;
+    ui.hideReplies.checked = settings.hideReplies;
     Object.entries(ui.floatingButtonCheckboxes).forEach(([setting, checkbox]) => {
       checkbox.checked = settings[setting];
     });
